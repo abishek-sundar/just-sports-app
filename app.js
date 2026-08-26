@@ -4,12 +4,13 @@
  */
 
 /* ---------- Config ---------- */
-// News source. Leave "" to use ESPN's keyless JSON (works with zero setup, but
-// every headline is from ESPN). To get merged multi-source RSS (ESPN, CBS, BBC,
-// Sky, MLB.com, ...), run the aggregator in worker/ and set its URL here, e.g.
-//   const NEWS_WORKER = "http://your-host:8787";   // node worker/server.js
-// If it's unreachable, the app automatically falls back to ESPN.
-const NEWS_WORKER = "";
+// News source.
+//   ""   → ESPN's keyless JSON only (zero setup, every headline from ESPN).
+//   "/"  → same-origin "/news" (the aggregator in worker/, proxied by nginx) for
+//          merged multi-source RSS (ESPN, CBS, BBC, Sky, MLB.com, ...).
+//   full URL (e.g. "http://host:8787") → aggregator on another origin.
+// If the aggregator is unreachable, the app automatically falls back to ESPN.
+const NEWS_WORKER = "/";
 
 // `window` is the results range in days around today: how many days back (past)
 // and ahead (future) to pull. Today is always included and shown first.
