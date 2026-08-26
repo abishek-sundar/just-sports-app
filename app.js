@@ -432,13 +432,14 @@ function gameCard(g) {
   card.appendChild(teamRow(g.away, showScore));
   card.appendChild(teamRow(g.home, showScore));
   const meta = el("div", "game-meta");
-  if (g.state === "in") meta.appendChild(el("span", "live-dot", "● LIVE"));
-  else if (g.state === "post") meta.appendChild(el("span", "final-tag", "FINAL"));
-  meta.appendChild(el("span", null, `${fmtDate(g.date)} · ${fmtTime(g.date)}`));
-  // Live clock/inning detail (Final is already shown as its own tag).
-  if (g.state === "in" && g.detail) {
-    meta.appendChild(el("span", "dot", "·"));
-    meta.appendChild(el("span", null, g.detail));
+  if (g.state === "in") {
+    // Live games: the start time is irrelevant once play is underway —
+    // the inning/clock is what matters, so show that instead, prominently.
+    meta.appendChild(el("span", "live-dot", "● LIVE"));
+    if (g.detail) meta.appendChild(el("span", "live-detail", g.detail));
+  } else {
+    if (g.state === "post") meta.appendChild(el("span", "final-tag", "FINAL"));
+    meta.appendChild(el("span", null, `${fmtDate(g.date)} · ${fmtTime(g.date)}`));
   }
   card.appendChild(meta);
   return card;

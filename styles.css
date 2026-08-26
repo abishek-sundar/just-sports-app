@@ -220,6 +220,10 @@ body {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+.live-detail {
+  color: var(--ink);
+  font-weight: 700;
+}
 .final-tag {
   font-weight: 700;
   font-size: 0.72rem;
