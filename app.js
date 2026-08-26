@@ -191,6 +191,7 @@ async function fetchF1Schedule() {
     round: r.round,
     name: r.raceName,
     date: r.date,
+    time: r.time,
     country: r.Circuit?.Location?.country || "",
   }));
   return { next, upcoming, past };
@@ -573,10 +574,16 @@ function renderF1ScheduleView(data) {
     const list = el("div", "f1-upcoming");
     list.appendChild(el("div", "f1-upcoming-label", "Later"));
     for (const race of upcoming) {
+      const iso = `${race.date}T${race.time || "12:00:00Z"}`;
       const row = el("div", "f1-upcoming-row");
-      row.append(
+      const top = el("div", "f1-upcoming-top");
+      top.append(
         el("span", "f1-race-name", race.name),
-        el("span", "f1-race-sub", `R${race.round} · ${dayLabel(race.date)}${race.country ? " · " + race.country : ""}`)
+        el("span", "f1-upcoming-when", `${dayLabel(iso)} · ${fmtTime(iso)}`)
+      );
+      row.append(
+        top,
+        el("span", "f1-race-sub", `R${race.round}${race.country ? " · " + race.country : ""}`)
       );
       list.appendChild(row);
     }

@@ -368,6 +368,11 @@ body {
   border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 14px;
 }
 .f1-upcoming-row + .f1-upcoming-row { margin-top: 8px; }
+.f1-upcoming-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.f1-upcoming-when {
+  font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
+  white-space: nowrap; flex-shrink: 0;
+}
 
 /* ---- News ---- */
 .article {
