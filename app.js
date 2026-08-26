@@ -65,6 +65,20 @@ function hexToRgb(hex) {
   if (Number.isNaN(n)) return null;
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
+// Some teams' primary brand color (per ESPN) is literally black or white (e.g. SF
+// Giants' primary is "000000") — a color with no hue at all, which our normalization
+// can't tint, so it renders as flat gray indistinguishable from a dimmed loser. Detect
+// that and prefer the alternate color instead.
+function isGrayscale(rgb) {
+  return Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b) < 20;
+}
+function pickTeamColor(t) {
+  const primary = t.color ? hexToRgb(t.color) : null;
+  if (primary && !isGrayscale(primary)) return `#${t.color}`;
+  const alt = t.alternateColor ? hexToRgb(t.alternateColor) : null;
+  if (alt && !isGrayscale(alt)) return `#${t.alternateColor}`;
+  return t.color ? `#${t.color}` : t.alternateColor ? `#${t.alternateColor}` : null;
+}
 function luminance({ r, g, b }) {
   const a = [r, g, b].map((v) => {
     v /= 255;
@@ -152,7 +166,7 @@ async function fetchBallScores(sport) {
       return {
         name: t.shortDisplayName || t.displayName || t.abbreviation || "—",
         score: c.score,
-        color: t.color ? `#${t.color}` : null,
+        color: pickTeamColor(t),
         winner: !!c.winner,
       };
     };
@@ -269,7 +283,7 @@ async function teamColorMap(sport) {
     const teams = data?.sports?.[0]?.leagues?.[0]?.teams || [];
     for (const w of teams) {
       const t = w.team || {};
-      if (t.abbreviation && t.color) map[t.abbreviation] = `#${t.color}`;
+      if (t.abbreviation) map[t.abbreviation] = pickTeamColor(t);
     }
   } catch { /* colors are optional */ }
   _teamColors[sport.key] = map;
@@ -287,7 +301,7 @@ async function fetchBallStandings(sport) {
       const t = e.team || {};
       return {
         name: t.shortDisplayName || t.displayName || t.abbreviation || "—",
-        color: (t.color ? `#${t.color}` : null) || colors[t.abbreviation] || null,
+        color: pickTeamColor(t) || colors[t.abbreviation] || null,
         wins: s.wins ?? s.W ?? "",
         losses: s.losses ?? s.L ?? "",
         pct: s.winPercent ?? s.leagueWinPercent ?? s.PCT ?? "",
