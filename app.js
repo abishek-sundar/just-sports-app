@@ -552,12 +552,15 @@ function f1RaceAccordionItem(race) {
   return item;
 }
 
-// Results tab: completed races only (collapsed so an unwatched race can't spoil).
+// Results tab: the next race up top (one click to see it), then completed races
+// (collapsed so an unwatched race can't spoil).
 function renderF1Results(data) {
   const c = scoresEl();
+  const next = data?.next;
   const races = data?.past || [];
-  if (!races.length) { c.replaceChildren(el("p", "empty", "No completed races yet this season.")); return; }
+  if (!next && !races.length) { c.replaceChildren(el("p", "empty", "No races yet this season.")); return; }
   const frag = document.createDocumentFragment();
+  if (next) frag.appendChild(nextRaceCard(next));
   for (const race of races) frag.appendChild(f1RaceAccordionItem(race));
   c.replaceChildren(frag);
 }
