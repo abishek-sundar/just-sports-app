@@ -1,0 +1,10 @@
+{
+  "name": "justsports-news",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "JustSports news aggregator — fetches, merges and de-dupes sports RSS feeds.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

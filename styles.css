@@ -1,0 +1,414 @@
+/* JustSports — calming, text-only. Team color is the only real color. */
+
+:root {
+  --bg:        #f6f0e2;  /* warm off-white */
+  --surface:   #fffdf6;  /* card */
+  --surface-2: #efe6d1;  /* subtle fill */
+  --border:    #e2d8c1;
+  --ink:       #221f19;  /* primary text */
+  --ink-soft:  #5b5443;  /* secondary text */
+  --ink-faint: #938a76;  /* tertiary */
+  --accent:    #e2551b;  /* saturated burnt orange */
+  --accent-soft: #f7ddc9;/* accent tint fill */
+  --live:      #d81f1f;  /* vivid red for LIVE */
+  --shadow:    0 1px 2px rgba(58, 44, 20, 0.06), 0 4px 14px rgba(58, 44, 20, 0.05);
+  --radius: 10px;
+  --maxw: 900px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html[data-theme="dark"] {
+  --bg:        #050505;  /* true near-black */
+  --surface:   #121110;
+  --surface-2: #1c1a16;
+  --border:    #2b2820;
+  --ink:       #f3ede2;
+  --ink-soft:  #bcb3a0;
+  --ink-faint: #837a68;
+  --accent:    #ff8a4d;  /* glowing orange on black */
+  --accent-soft: #2e2013;
+  --live:      #ff5f5f;
+  --shadow:    0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  padding: 0 16px calc(64px + env(safe-area-inset-bottom));
+}
+
+/* ---- Top bar ---- */
+.topbar {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 0 14px;
+}
+
+.wordmark {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--ink);
+}
+.wordmark span { color: var(--accent); font-weight: 600; }
+
+.theme-toggle {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.theme-toggle:hover { background: var(--surface-2); color: var(--ink); }
+
+/* ---- Tabs ---- */
+.tabs {
+  max-width: var(--maxw);
+  margin: 0 auto 4px;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--ink-soft); }
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- Layout ---- */
+/* Single column: scores on top, news below. */
+.panel {
+  max-width: var(--maxw);
+  margin: 20px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.panel .col:last-child { margin-top: 4px; }
+
+.col-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+/* Results / Standings sub-tabs */
+.col-head { margin-bottom: 10px; }
+.subtabs { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 999px; padding: 3px; }
+.subtab {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.subtab[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+/* Standings table */
+.standings { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.standings-group + .standings-group { border-top: 1px solid var(--border); }
+/* F1: Drivers | Constructors side by side, stacking on narrow screens. */
+.standings.standings-cols { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+.standings-cols .standings-group + .standings-group { border-top: none; border-left: 1px solid var(--border); }
+@media (max-width: 560px) {
+  .standings.standings-cols { grid-template-columns: 1fr; }
+  .standings-cols .standings-group + .standings-group { border-left: none; border-top: 1px solid var(--border); }
+}
+.standings-group-title {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-faint); font-weight: 600; padding: 10px 14px 6px;
+}
+.st-row {
+  display: grid;
+  grid-template-columns: 1.4rem 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 14px;
+}
+.st-row.st-header { color: var(--ink-faint); font-size: 0.72rem; padding-bottom: 4px; }
+.st-row + .st-row { border-top: 1px solid var(--border); }
+.st-rank { color: var(--ink-faint); font-variant-numeric: tabular-nums; text-align: right; }
+.st-team { color: var(--team, var(--ink)); font-weight: 500; }
+.st-figs { display: flex; gap: 14px; font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 0.85rem; }
+.st-figs b { color: var(--ink); font-weight: 600; }
+.st-figs .muted { color: var(--ink-faint); }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- Score cards ---- */
+.game {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--team, var(--border));
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  /* Equal-height grid cells: teams at top, status pinned to the bottom. */
+  display: flex;
+  flex-direction: column;
+}
+.game-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.game-row + .game-row { margin-top: 4px; }
+.team-name {
+  font-weight: 500;
+  color: var(--team, var(--ink));
+}
+.team-name.loser { opacity: 0.62; font-weight: 400; }
+.score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 2ch;
+  text-align: right;
+}
+.game-meta {
+  margin-top: auto; /* pin status to the bottom of equal-height cards */
+  padding-top: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-dot {
+  color: var(--live);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.final-tag {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Upcoming games: team names left, big start time right */
+.game.upcoming {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.game.upcoming .game-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.game.upcoming .team-name { color: var(--team, var(--ink)); }
+.game-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+.when-time {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.when-date {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+/* Day separators (MLB/NBA results). Cards flow into as many columns as fit,
+   and every card in the day is forced to the same height (equal-height rows). */
+.day-group + .day-group { margin-top: 18px; }
+.day-header {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  color: var(--ink-faint);
+  padding: 0 2px 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.day-games {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+  grid-auto-rows: 1fr;
+  align-items: stretch;
+}
+/* Today is the headline day: brighter label, accent underline. */
+.day-group.today .day-header {
+  color: var(--accent);
+  font-size: 0.78rem;
+  border-bottom-color: var(--accent);
+}
+
+/* F1 race accordion */
+.f1-race { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--team, var(--border)); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.f1-race + .f1-race { margin-top: 8px; }
+.f1-race-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.f1-race-head:hover { background: var(--surface-2); }
+.f1-race-title { display: flex; flex-direction: column; gap: 2px; }
+.f1-race-name { font-weight: 500; }
+.f1-race-sub { font-size: 0.76rem; color: var(--ink-faint); }
+.f1-race-chevron { color: var(--ink-faint); font-size: 0.8rem; }
+.f1-race-head[aria-expanded="true"] .f1-race-chevron { color: var(--accent); }
+.f1-race-body { padding: 4px 14px 12px; border-top: 1px solid var(--border); }
+.f1-loading { color: var(--ink-faint); font-size: 0.85rem; padding: 8px 0; }
+
+/* F1 result rows */
+.f1-head { font-weight: 500; margin-bottom: 6px; color: var(--ink); }
+.f1-note { color: var(--ink-faint); font-size: 0.76rem; padding: 2px 0 6px; }
+.f1-row {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto auto;
+  gap: 10px;
+  padding: 4px 0;
+  align-items: baseline;
+}
+.f1-row + .f1-row { border-top: 1px solid var(--border); }
+.f1-pos { color: var(--ink-faint); font-variant-numeric: tabular-nums; text-align: right; }
+.f1-driver { color: var(--team, var(--ink)); font-weight: 500; }
+.f1-constructor { color: var(--ink-faint); font-weight: 400; font-size: 0.85em; }
+.f1-pts { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.84rem; }
+.f1-time { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-size: 0.88rem; text-align: right; }
+
+/* F1 next race */
+.f1-next {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.f1-next-label {
+  font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: 4px;
+}
+.f1-next-title { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.f1-sessions { display: flex; flex-direction: column; }
+.f1-session {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 5px 0; gap: 12px;
+}
+.f1-session + .f1-session { border-top: 1px solid var(--border); }
+.f1-session-name { font-weight: 500; color: var(--ink); }
+.f1-session-when { color: var(--ink-soft); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* ---- News ---- */
+.article {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+}
+.article a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 500;
+}
+.article a:hover { text-decoration: underline; }
+.article .desc { color: var(--ink-soft); font-size: 0.88rem; margin: 4px 0 0; }
+.article-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.article-source {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--surface-2);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.article .date { color: var(--ink-faint); font-size: 0.75rem; }
+
+/* ---- States ---- */
+.empty, .error {
+  color: var(--ink-faint);
+  font-size: 0.9rem;
+  padding: 14px 2px;
+}
+.error { color: var(--live); }
+.skeleton {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  height: 58px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+
+/* ---- Footer ---- */
+.footnote {
+  max-width: var(--maxw);
+  margin: 34px auto 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.footnote .dot { color: var(--border); }

@@ -1,0 +1,6 @@
+name = "justsports"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Deploy:  npx wrangler deploy
+# Local:   npx wrangler dev   (then set NEWS_WORKER to http://localhost:8787 in ../app.js)
