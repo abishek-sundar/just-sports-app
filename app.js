@@ -72,21 +72,52 @@ function luminance({ r, g, b }) {
   });
   return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
 }
-const mix = (c, t, amt) => ({
-  r: Math.round(c.r + (t.r - c.r) * amt),
-  g: Math.round(c.g + (t.g - c.g) * amt),
-  b: Math.round(c.b + (t.b - c.b) * amt),
-});
 const rgbStr = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
+function rgbToHsl({ r, g, b }) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case r: h = ((g - b) / d) % 6; break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s, l };
+}
+function hslToRgb({ h, s, l }) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
 
-// Keep a team color legible against the current theme's surface.
+// Team brand colors span a huge luminance range (a near-black navy next to a
+// bright cyan), and MLB/NBA hand us whatever hex they use for jerseys. A single
+// legibility threshold treats colors just above/below the cutoff totally
+// differently, so some teams read as bold and others washed-out for no reason
+// the user can see. Instead, walk lightness (hue/saturation untouched, so each
+// team still reads as "its" color) until perceptual luminance lands in a band —
+// every team ends up roughly as bold as every other team.
 function readableTeamColor(hex) {
   const rgb = hexToRgb(hex);
   if (!rgb) return null;
-  const lum = luminance(rgb);
-  // Only rescue the extremes so colors stay vibrant; near-black/white bgs give headroom.
-  if (isDark()) return lum < 0.11 ? rgbStr(mix(rgb, { r: 255, g: 255, b: 255 }, 0.5)) : rgbStr(rgb);
-  return lum > 0.72 ? rgbStr(mix(rgb, { r: 0, g: 0, b: 0 }, 0.32)) : rgbStr(rgb);
+  const [lo, hi] = isDark() ? [0.16, 0.42] : [0.05, 0.18];
+  const hsl = rgbToHsl(rgb);
+  let cur = luminance(rgb);
+  let tries = 0;
+  while (cur < lo && hsl.l < 0.95 && tries < 60) { hsl.l += 0.02; cur = luminance(hslToRgb(hsl)); tries++; }
+  tries = 0;
+  while (cur > hi && hsl.l > 0.05 && tries < 60) { hsl.l -= 0.02; cur = luminance(hslToRgb(hsl)); tries++; }
+  return rgbStr(hslToRgb(hsl));
 }
 
 /* ---------- Fetch ---------- */

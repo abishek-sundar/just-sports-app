@@ -197,7 +197,6 @@ body {
 .team-name {
   font-weight: 700;
   color: var(--team, var(--ink));
-  filter: saturate(1.25);
 }
 .team-name.loser { opacity: 0.62; font-weight: 400; }
 .score {
