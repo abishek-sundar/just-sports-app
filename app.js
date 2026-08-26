@@ -15,8 +15,8 @@ const NEWS_WORKER = "/";
 // `window` is the results range in days around today: how many days back (past)
 // and ahead (future) to pull. Today is always included and shown first.
 const SPORTS = [
-  { key: "mlb", label: "MLB", kind: "ball", espn: "baseball/mlb",    window: { past: 2, future: 1 } },
-  { key: "nba", label: "NBA", kind: "ball", espn: "basketball/nba",  window: { past: 2, future: 2 } },
+  { key: "mlb", label: "MLB", kind: "ball", espn: "baseball/mlb",    window: { past: 2, future: 7 } },
+  { key: "nba", label: "NBA", kind: "ball", espn: "basketball/nba",  window: { past: 2, future: 7 } },
   { key: "f1",  label: "F1",  kind: "f1",   espnNews: "racing/f1" },
 ];
 
@@ -108,7 +108,7 @@ function dateRange({ past, future }) {
 
 async function fetchBallScores(sport) {
   const win = sport.window || DEFAULT_WINDOW;
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${sport.espn}/scoreboard?dates=${dateRange(win)}&limit=100`;
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${sport.espn}/scoreboard?dates=${dateRange(win)}&limit=400`;
   const data = await getJSON(url);
   const games = (data.events || []).map((ev) => {
     const comp = (ev.competitions && ev.competitions[0]) || {};
@@ -182,8 +182,18 @@ async function fetchF1Schedule() {
       country: r.Circuit?.Location?.country || "",
     }))
     .sort((a, b) => Number(b.round) - Number(a.round));
-  const nextRace = races.find((r) => raceStart(r) > now);
-  return { next: nextRace ? buildNextRace(nextRace) : null, past };
+  // Upcoming races (soonest first). The first gets a full session breakdown;
+  // the rest are listed compactly on the Schedule tab.
+  const future = races.filter((r) => raceStart(r) > now)
+    .sort((a, b) => Number(a.round) - Number(b.round));
+  const next = future.length ? buildNextRace(future[0]) : null;
+  const upcoming = future.slice(1).map((r) => ({
+    round: r.round,
+    name: r.raceName,
+    date: r.date,
+    country: r.Circuit?.Location?.country || "",
+  }));
+  return { next, upcoming, past };
 }
 
 const _f1Rounds = {}; // round -> { results[], hasSprint }
@@ -414,9 +424,9 @@ function dayOrderKey(iso) {
   if (diff === 0) return [0, 0];
   return diff > 0 ? [1, diff] : [2, -diff];
 }
-function renderBallScores(games) {
+function renderDayGroups(games, emptyMsg) {
   const c = scoresEl();
-  if (!games || !games.length) { c.replaceChildren(el("p", "empty", "No games in this window.")); return; }
+  if (!games || !games.length) { c.replaceChildren(el("p", "empty", emptyMsg)); return; }
   // Group by calendar day.
   const byDay = new Map();
   for (const g of games) {
@@ -449,6 +459,16 @@ function renderBallScores(games) {
     frag.appendChild(group);
   }
   c.replaceChildren(frag);
+}
+// Results = games that are live or finished (they have a score). No upcoming.
+function renderResults(games) {
+  renderDayGroups((games || []).filter((g) => g.state !== "pre"),
+    "No completed or live games.");
+}
+// Schedule = upcoming games only (not yet started), earliest day first.
+function renderSchedule(games) {
+  renderDayGroups((games || []).filter((g) => g.state === "pre"),
+    "No upcoming games scheduled.");
 }
 function f1ResultRows(container, data) {
   container.replaceChildren();
@@ -495,49 +515,73 @@ function nextRaceCard(next) {
   return item;
 }
 
-function renderF1Schedule(data) {
+// One completed race as a collapsed accordion; results load lazily on expand.
+function f1RaceAccordionItem(race) {
+  const item = el("div", "f1-race");
+  const btn = el("button", "f1-race-head");
+  btn.type = "button";
+  btn.setAttribute("aria-expanded", "false");
+  const title = el("div", "f1-race-title");
+  title.append(
+    el("span", "f1-race-name", race.name),
+    el("span", "f1-race-sub", `R${race.round} · ${dayLabel(race.date)}${race.country ? " · " + race.country : ""}`)
+  );
+  btn.append(title, el("span", "f1-race-chevron", "▸"));
+  const body = el("div", "f1-race-body");
+  body.hidden = true;
+
+  btn.addEventListener("click", async () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!open));
+    btn.querySelector(".f1-race-chevron").textContent = open ? "▸" : "▾";
+    body.hidden = open;
+    if (!open && !body.dataset.loaded) {
+      body.appendChild(el("div", "f1-loading", "Loading…"));
+      try {
+        const results = await fetchF1RoundResults(race.round);
+        f1ResultRows(body, results);
+        body.dataset.loaded = "1";
+      } catch {
+        body.replaceChildren(el("p", "error", "Couldn't load results."));
+      }
+    }
+  });
+
+  item.append(btn, body);
+  return item;
+}
+
+// Results tab: completed races only (collapsed so an unwatched race can't spoil).
+function renderF1Results(data) {
+  const c = scoresEl();
+  const races = data?.past || [];
+  if (!races.length) { c.replaceChildren(el("p", "empty", "No completed races yet this season.")); return; }
+  const frag = document.createDocumentFragment();
+  for (const race of races) frag.appendChild(f1RaceAccordionItem(race));
+  c.replaceChildren(frag);
+}
+
+// Schedule tab: the next race (full session breakdown) + later races, compact.
+function renderF1ScheduleView(data) {
   const c = scoresEl();
   const next = data?.next;
-  const races = data?.past || [];
-  if (!next && !races.length) { c.replaceChildren(el("p", "empty", "No races yet this season.")); return; }
+  const upcoming = data?.upcoming || [];
+  if (!next && !upcoming.length) { c.replaceChildren(el("p", "empty", "No upcoming races scheduled.")); return; }
   const frag = document.createDocumentFragment();
   if (next) frag.appendChild(nextRaceCard(next));
-  races.forEach((race, i) => {
-    const item = el("div", "f1-race");
-    const btn = el("button", "f1-race-head");
-    btn.type = "button";
-    btn.setAttribute("aria-expanded", "false");
-    const title = el("div", "f1-race-title");
-    title.append(
-      el("span", "f1-race-name", race.name),
-      el("span", "f1-race-sub", `R${race.round} · ${dayLabel(race.date)}${race.country ? " · " + race.country : ""}`)
-    );
-    btn.append(title, el("span", "f1-race-chevron", "▸"));
-    const body = el("div", "f1-race-body");
-    body.hidden = true;
-
-    btn.addEventListener("click", async () => {
-      const open = btn.getAttribute("aria-expanded") === "true";
-      btn.setAttribute("aria-expanded", String(!open));
-      btn.querySelector(".f1-race-chevron").textContent = open ? "▸" : "▾";
-      body.hidden = open;
-      if (!open && !body.dataset.loaded) {
-        body.appendChild(el("div", "f1-loading", "Loading…"));
-        try {
-          const results = await fetchF1RoundResults(race.round);
-          f1ResultRows(body, results);
-          body.dataset.loaded = "1";
-        } catch {
-          body.replaceChildren(el("p", "error", "Couldn't load results."));
-        }
-      }
-    });
-
-    item.append(btn, body);
-    frag.appendChild(item);
-    // Deliberately collapsed by default — results stay hidden until you click,
-    // so an unwatched race can't spoil itself.
-  });
+  if (upcoming.length) {
+    const list = el("div", "f1-upcoming");
+    list.appendChild(el("div", "f1-upcoming-label", "Later"));
+    for (const race of upcoming) {
+      const row = el("div", "f1-upcoming-row");
+      row.append(
+        el("span", "f1-race-name", race.name),
+        el("span", "f1-race-sub", `R${race.round} · ${dayLabel(race.date)}${race.country ? " · " + race.country : ""}`)
+      );
+      list.appendChild(row);
+    }
+    frag.appendChild(list);
+  }
   c.replaceChildren(frag);
 }
 
@@ -616,8 +660,13 @@ function rerenderScores() {
   // Re-render current view from cache (used on theme toggle & view switch).
   const sport = SPORTS.find((s) => s.key === cache.sport);
   if (!sport) return;
-  if (activeView === "standings") { renderStandings(cache.standings); return; }
-  sport.kind === "f1" ? renderF1Schedule(cache.results) : renderBallScores(cache.results);
+  if (activeView === "standings") return renderStandings(cache.standings);
+  if (sport.kind === "f1") {
+    return activeView === "schedule"
+      ? renderF1ScheduleView(cache.results)
+      : renderF1Results(cache.results);
+  }
+  return activeView === "schedule" ? renderSchedule(cache.results) : renderResults(cache.results);
 }
 
 async function loadScores(sport, { showSkeleton } = {}) {
@@ -634,7 +683,7 @@ async function loadScores(sport, { showSkeleton } = {}) {
       const data = sport.kind === "f1" ? await fetchF1Schedule() : await fetchBallScores(sport);
       if (activeSport !== sport.key) return;
       cache.results = data;
-      sport.kind === "f1" ? renderF1Schedule(data) : renderBallScores(data);
+      rerenderScores();
     }
   } catch (e) {
     if (activeSport === sport.key) scoresEl().replaceChildren(el("p", "error", "Couldn't load — will retry."));

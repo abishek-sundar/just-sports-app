@@ -356,6 +356,19 @@ body {
 .f1-session-name { font-weight: 500; color: var(--ink); }
 .f1-session-when { color: var(--ink-soft); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 
+/* F1 later-races list (Schedule tab) */
+.f1-upcoming { margin-top: 14px; }
+.f1-upcoming-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-faint); font-weight: 700; margin-bottom: 6px; padding: 0 2px;
+}
+.f1-upcoming-row {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 14px;
+}
+.f1-upcoming-row + .f1-upcoming-row { margin-top: 8px; }
+
 /* ---- News ---- */
 .article {
   background: var(--surface);
