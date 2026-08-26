@@ -195,7 +195,7 @@ body {
 }
 .game-row + .game-row { margin-top: 4px; }
 .team-name {
-  font-weight: 500;
+  font-weight: 700;
   color: var(--team, var(--ink));
 }
 .team-name.loser { opacity: 0.62; font-weight: 400; }
