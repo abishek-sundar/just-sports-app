@@ -391,12 +391,15 @@ function dayLabel(iso) {
 }
 
 /* ---------- Render: results ---------- */
-function teamRow(t, showScore, behind) {
+function teamRow(t, showScore, behind, final) {
   const row = el("div", "game-row");
   const name = el("span", "team-name", t.name);
   const color = readableTeamColor(t.color);
   if (color) name.style.setProperty("--team", color);
   if (showScore && behind) name.classList.add("loser");
+  // Only a finished game has an actual winner worth calling out; a live leader
+  // can still lose, so bolding it would be a promise the game hasn't kept yet.
+  if (showScore && final && !behind) name.classList.add("winner");
   row.appendChild(name);
   if (showScore) row.appendChild(el("span", "score", t.score ?? "–"));
   return row;
@@ -442,8 +445,9 @@ function gameCard(g) {
   const lead = showScore ? (Number(g.home.score) >= Number(g.away.score) ? g.home : g.away) : g.away;
   const accent = readableTeamColor(lead.color);
   if (accent) card.style.setProperty("--team", accent);
-  card.appendChild(teamRow(g.away, showScore, isBehind(g, g.away)));
-  card.appendChild(teamRow(g.home, showScore, isBehind(g, g.home)));
+  const final = g.state === "post";
+  card.appendChild(teamRow(g.away, showScore, isBehind(g, g.away), final));
+  card.appendChild(teamRow(g.home, showScore, isBehind(g, g.home), final));
   const meta = el("div", "game-meta");
   if (g.state === "in") {
     // Live games: the start time is irrelevant once play is underway —

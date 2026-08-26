@@ -199,6 +199,7 @@ body {
   color: var(--team, var(--ink));
 }
 .team-name.loser { opacity: 0.62; font-weight: 400; }
+.team-name.winner { font-weight: 700; }
 .score {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
