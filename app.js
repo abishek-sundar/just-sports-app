@@ -539,8 +539,9 @@ function f1SessionAccordionItem(race, expanded) {
 }
 
 // One completed race as a collapsed accordion; results load lazily on expand.
-function f1RaceAccordionItem(race) {
-  const item = el("div", "f1-race");
+function f1RaceAccordionItem(race, isLast) {
+  const item = el("div", isLast ? "f1-race last-race" : "f1-race");
+  if (isLast) item.appendChild(el("div", "f1-last-label", "Last Race"));
   const btn = el("button", "f1-race-head");
   btn.type = "button";
   btn.setAttribute("aria-expanded", "false");
@@ -583,18 +584,20 @@ function renderF1Results(data) {
   if (!next && !races.length) { c.replaceChildren(el("p", "empty", "No races yet this season.")); return; }
   const frag = document.createDocumentFragment();
   if (next) frag.appendChild(nextRaceCard(next));
-  for (const race of races) frag.appendChild(f1RaceAccordionItem(race));
+  races.forEach((race, i) => frag.appendChild(f1RaceAccordionItem(race, i === 0)));
   c.replaceChildren(frag);
 }
 
-// Schedule tab: every upcoming race as an expandable card of session times.
-// The next race is expanded by default; the rest open on click.
+// Schedule tab: the next race as the same non-collapsible "Next Race" card used
+// in Results, then the rest as expandable accordions of session times.
 function renderF1ScheduleView(data) {
   const c = scoresEl();
   const upcoming = data?.upcoming || [];
   if (!upcoming.length) { c.replaceChildren(el("p", "empty", "No upcoming races scheduled.")); return; }
   const frag = document.createDocumentFragment();
-  upcoming.forEach((race, i) => frag.appendChild(f1SessionAccordionItem(race, i === 0)));
+  // First race gets the same non-collapsible "Next Race" card as the Results tab.
+  frag.appendChild(nextRaceCard(upcoming[0]));
+  upcoming.slice(1).forEach((race) => frag.appendChild(f1SessionAccordionItem(race, false)));
   c.replaceChildren(frag);
 }
 

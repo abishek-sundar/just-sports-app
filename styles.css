@@ -10,6 +10,7 @@
   --ink-faint: #938a76;  /* tertiary */
   --accent:    #e2551b;  /* saturated burnt orange */
   --accent-soft: #f7ddc9;/* accent tint fill */
+  --last:      #3f7cc2;  /* last-race accent (neutral blue, never a team color) */
   --live:      #d81f1f;  /* vivid red for LIVE */
   --shadow:    0 1px 2px rgba(58, 44, 20, 0.06), 0 4px 14px rgba(58, 44, 20, 0.05);
   --radius: 10px;
@@ -19,15 +20,16 @@
 
 html[data-theme="dark"] {
   --bg:        #050505;  /* true near-black */
-  --surface:   #121110;
-  --surface-2: #1c1a16;
-  --border:    #2b2820;
-  --ink:       #f3ede2;
-  --ink-soft:  #bcb3a0;
-  --ink-faint: #837a68;
-  --accent:    #ff8a4d;  /* glowing orange on black */
-  --accent-soft: #2e2013;
-  --live:      #ff5f5f;
+  --surface:   #171512;
+  --surface-2: #221f19;
+  --border:    #4a4536;  /* brighter so card/row edges stay visible on near-black */
+  --ink:       #f8f4ea;
+  --ink-soft:  #d3cab6;  /* lightened for readability */
+  --ink-faint: #a89d86;  /* lightened for readability */
+  --accent:    #ff9a63;  /* glowing orange on black */
+  --accent-soft: #3a2717;
+  --last:      #86bcf2;  /* last-race accent on black */
+  --live:      #ff6f6f;
   --shadow:    0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
@@ -291,6 +293,12 @@ body {
 
 /* F1 race accordion */
 .f1-race { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--team, var(--border)); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+/* Most recent race — distinct neutral accent, no winner/team color (no spoilers). */
+.f1-race.last-race { border-left-color: var(--last); }
+.f1-last-label {
+  font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--last); font-weight: 700; margin: 12px 14px -6px;
+}
 .f1-race + .f1-race { margin-top: 8px; }
 .f1-race-head {
   width: 100%;
