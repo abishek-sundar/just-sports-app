@@ -8,10 +8,10 @@
   --ink:       #221f19;  /* primary text */
   --ink-soft:  #5b5443;  /* secondary text */
   --ink-faint: #938a76;  /* tertiary */
-  --accent:    #e2551b;  /* saturated burnt orange */
+  --accent:    #c9663e;  /* muted burnt orange */
   --accent-soft: #f7ddc9;/* accent tint fill */
-  --last:      #3f7cc2;  /* last-race accent (neutral blue, never a team color) */
-  --live:      #d81f1f;  /* vivid red for LIVE */
+  --last:      #497db8;  /* last-race accent (neutral blue, never a team color) */
+  --live:      #c64040;  /* muted red for LIVE */
   --shadow:    0 1px 2px rgba(58, 44, 20, 0.06), 0 4px 14px rgba(58, 44, 20, 0.05);
   --radius: 10px;
   --maxw: 900px;
@@ -26,10 +26,10 @@ html[data-theme="dark"] {
   --ink:       #f3ede2;
   --ink-soft:  #bcb3a0;
   --ink-faint: #837a68;
-  --accent:    #ff8a4d;  /* glowing orange on black */
+  --accent:    #e48859;  /* muted orange on black */
   --accent-soft: #2e2013;
-  --last:      #86bcf2;  /* last-race accent on black */
-  --live:      #ff5f5f;
+  --last:      #8ebcea;  /* last-race accent on black */
+  --live:      #e76d6d;  /* muted red for LIVE */
   --shadow:    0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
@@ -58,12 +58,12 @@ body {
 
 .wordmark {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.02em;
   margin: 0;
   color: var(--ink);
 }
-.wordmark span { color: var(--accent); font-weight: 600; }
+.wordmark span { color: var(--accent); font-weight: 500; }
 
 .theme-toggle {
   font: inherit;
@@ -123,7 +123,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-faint);
-  font-weight: 600;
+  font-weight: 500;
   margin: 0 0 10px;
 }
 
@@ -156,7 +156,7 @@ body {
 }
 .standings-group-title {
   font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--ink-faint); font-weight: 600; padding: 10px 14px 6px;
+  color: var(--ink-faint); font-weight: 500; padding: 10px 14px 6px;
 }
 .st-row {
   display: grid;
@@ -170,7 +170,7 @@ body {
 .st-rank { color: var(--ink-faint); font-variant-numeric: tabular-nums; text-align: right; }
 .st-team { color: var(--team, var(--ink)); font-weight: 500; }
 .st-figs { display: flex; gap: 14px; font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 0.85rem; }
-.st-figs b { color: var(--ink); font-weight: 600; }
+.st-figs b { color: var(--ink); font-weight: 500; }
 .st-figs .muted { color: var(--ink-faint); }
 
 .list { display: flex; flex-direction: column; gap: 8px; }
@@ -195,13 +195,13 @@ body {
 }
 .game-row + .game-row { margin-top: 4px; }
 .team-name {
-  font-weight: 700;
+  font-weight: 500;
   color: var(--team, var(--ink));
 }
 .team-name.loser { opacity: 0.62; font-weight: 400; }
 .score {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   min-width: 2ch;
   text-align: right;
@@ -217,14 +217,14 @@ body {
 }
 .live-dot {
   color: var(--live);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
 }
 .live-detail {
   color: var(--ink); /* brighter than the default faint meta text, same weight so it doesn't look mismatched */
 }
 .final-tag {
-  font-weight: 700;
+  font-weight: 500;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
   color: var(--ink);
@@ -255,7 +255,7 @@ body {
 }
 .when-time {
   font-size: 1.4rem;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -274,7 +274,7 @@ body {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink-faint);
   padding: 0 2px 8px;
   margin-bottom: 8px;
@@ -300,7 +300,7 @@ body {
 .f1-race.last-race { border-left-color: var(--last); }
 .f1-last-label {
   font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--last); font-weight: 700; margin: 12px 14px -6px;
+  color: var(--last); font-weight: 500; margin: 12px 14px -6px;
 }
 .f1-race + .f1-race { margin-top: 8px; }
 .f1-race-head {
@@ -340,7 +340,7 @@ body {
 .f1-pos { color: var(--ink-faint); font-variant-numeric: tabular-nums; text-align: right; }
 .f1-driver { color: var(--team, var(--ink)); font-weight: 500; }
 .f1-constructor { color: var(--ink-faint); font-weight: 400; font-size: 0.85em; }
-.f1-pts { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; font-size: 0.84rem; }
+.f1-pts { color: var(--accent); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 0.84rem; }
 .f1-time { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-size: 0.88rem; text-align: right; }
 
 /* F1 next race */
@@ -355,7 +355,7 @@ body {
 }
 .f1-next-label {
   font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--accent); font-weight: 700; margin-bottom: 4px;
+  color: var(--accent); font-weight: 500; margin-bottom: 4px;
 }
 .f1-next-title { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .f1-sessions { display: flex; flex-direction: column; }
@@ -371,7 +371,7 @@ body {
 .f1-upcoming { margin-top: 14px; }
 .f1-upcoming-label {
   font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--ink-faint); font-weight: 700; margin-bottom: 6px; padding: 0 2px;
+  color: var(--ink-faint); font-weight: 500; margin-bottom: 6px; padding: 0 2px;
 }
 .f1-upcoming-row {
   display: flex; flex-direction: column; gap: 2px;
@@ -381,7 +381,7 @@ body {
 .f1-upcoming-row + .f1-upcoming-row { margin-top: 8px; }
 .f1-upcoming-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .f1-upcoming-when {
-  font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
+  font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums;
   white-space: nowrap; flex-shrink: 0;
 }
 
@@ -403,7 +403,7 @@ body {
 .article-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .article-source {
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--accent);

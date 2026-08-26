@@ -100,19 +100,21 @@ function hslToRgb({ h, s, l }) {
   return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
 }
 
-// Team brand colors span a huge luminance range (a near-black navy next to a
-// bright cyan), and MLB/NBA hand us whatever hex they use for jerseys. A single
-// legibility threshold treats colors just above/below the cutoff totally
-// differently, so some teams read as bold and others washed-out for no reason
-// the user can see. Instead, walk lightness (hue/saturation untouched, so each
-// team still reads as "its" color) until perceptual luminance lands in a band —
-// every team ends up roughly as bold as every other team.
+// Team brand colors span a huge luminance/saturation range (a near-black navy
+// next to a fully-saturated cyan), and MLB/NBA hand us whatever hex they use
+// for jerseys. A single legibility threshold treats colors just above/below
+// the cutoff totally differently, so some teams read as bold and others
+// washed-out, and fully-saturated brand colors read as loud/neon against a
+// calm UI. So: cap saturation for a muted look, then walk lightness until
+// perceptual luminance lands in a band — every team ends up similarly muted
+// and similarly bold, just distinguished by hue.
 function readableTeamColor(hex) {
   const rgb = hexToRgb(hex);
   if (!rgb) return null;
   const [lo, hi] = isDark() ? [0.12, 0.28] : [0.04, 0.14];
   const hsl = rgbToHsl(rgb);
-  let cur = luminance(rgb);
+  hsl.s = Math.min(hsl.s, 0.6);
+  let cur = luminance(hslToRgb(hsl));
   let tries = 0;
   while (cur < lo && hsl.l < 0.95 && tries < 60) { hsl.l += 0.02; cur = luminance(hslToRgb(hsl)); tries++; }
   tries = 0;
