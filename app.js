@@ -667,7 +667,11 @@ function renderNews(items) {
 }
 
 /* ---------- Orchestration ---------- */
-const cache = { sport: null, results: null, standings: null, news: null };
+// All views are kept cached and refreshed on their own cadence, so switching
+// sub-tabs is always instant: scores every POLL_MS (they can be live), standings
+// at most every STANDINGS_TTL (they only move when a game finishes).
+const cache = { sport: null, results: null, standings: null, standingsAt: 0, news: null };
+const STANDINGS_TTL = 5 * 60_000;
 
 function rerenderScores() {
   // Re-render current view from cache (used on theme toggle & view switch).
@@ -681,27 +685,45 @@ function rerenderScores() {
   }
   return activeView === "schedule" ? renderSchedule(cache.results) : renderResults(cache.results);
 }
+const onScoresView = () => activeView === "results" || activeView === "schedule";
 
-async function loadScores(sport, { showSkeleton } = {}) {
-  if (showSkeleton) skeletons(scoresEl());
+// Scoreboard (Results + Schedule share this). Refetched each poll for liveness.
+async function refreshScores(sport, { skeleton = false } = {}) {
+  if (skeleton && onScoresView()) skeletons(scoresEl());
   try {
-    if (activeView === "standings") {
-      const groups = sport.kind === "f1" ? await fetchF1Standings() : await fetchBallStandings(sport);
-      if (activeSport !== sport.key) return;
-      cache.standings = groups;
-      renderStandings(groups);
-    } else {
-      // F1 schedule is static within a session; don't clobber expand state on background polls.
-      if (sport.kind === "f1" && !showSkeleton && cache.results) return;
-      const data = sport.kind === "f1" ? await fetchF1Schedule() : await fetchBallScores(sport);
-      if (activeSport !== sport.key) return;
-      cache.results = data;
-      rerenderScores();
-    }
-  } catch (e) {
-    if (activeSport === sport.key) scoresEl().replaceChildren(el("p", "error", "Couldn't load — will retry."));
+    // F1 race list is static within a session; don't refetch on polls (keeps
+    // accordion expand state, and races only shift after one actually finishes).
+    if (sport.kind === "f1" && cache.results && !skeleton) return;
+    const data = sport.kind === "f1" ? await fetchF1Schedule() : await fetchBallScores(sport);
+    if (activeSport !== sport.key) return;
+    cache.results = data;
+    if (onScoresView()) rerenderScores();
+  } catch {
+    if (activeSport === sport.key && onScoresView() && !cache.results)
+      scoresEl().replaceChildren(el("p", "error", "Couldn't load — will retry."));
   }
 }
+
+// Standings change slowly — skip the fetch entirely if the cache is still fresh.
+async function refreshStandings(sport, { skeleton = false, force = false } = {}) {
+  const fresh = cache.standings && Date.now() - cache.standingsAt < STANDINGS_TTL;
+  if (fresh && !force) {
+    if (skeleton && activeView === "standings") rerenderScores();
+    return;
+  }
+  if (skeleton && activeView === "standings") skeletons(scoresEl());
+  try {
+    const groups = sport.kind === "f1" ? await fetchF1Standings() : await fetchBallStandings(sport);
+    if (activeSport !== sport.key) return;
+    cache.standings = groups;
+    cache.standingsAt = Date.now();
+    if (activeView === "standings") rerenderScores();
+  } catch {
+    if (activeSport === sport.key && activeView === "standings" && !cache.standings)
+      scoresEl().replaceChildren(el("p", "error", "Couldn't load — will retry."));
+  }
+}
+
 async function loadNews(sport, { showSkeleton } = {}) {
   if (showSkeleton) skeletons(newsEl());
   try {
@@ -714,31 +736,17 @@ async function loadNews(sport, { showSkeleton } = {}) {
   }
 }
 
-// Warm the caches for views the user isn't looking at yet, so switching sub-tabs
-// is instant (no skeleton). Only fills what's missing; the active view already
-// loaded above, and background polling keeps the active view fresh.
-function prefetchViews(sport) {
-  if (!cache.standings) {
-    (sport.kind === "f1" ? fetchF1Standings() : fetchBallStandings(sport))
-      .then((g) => { if (activeSport === sport.key && !cache.standings) cache.standings = g; })
-      .catch(() => {});
-  }
-  if (!cache.results) {
-    (sport.kind === "f1" ? fetchF1Schedule() : fetchBallScores(sport))
-      .then((d) => { if (activeSport === sport.key && !cache.results) cache.results = d; })
-      .catch(() => {});
-  }
-}
-
-async function load(sportKey, { showSkeleton = true } = {}) {
+// Initial load for a sport: warm every view (scores, standings, news) at once,
+// so all sub-tabs are ready. Only the active view shows a skeleton.
+async function load(sportKey) {
   const sport = SPORTS.find((s) => s.key === sportKey);
   if (!sport) return;
   cache.sport = sportKey;
   await Promise.allSettled([
-    loadScores(sport, { showSkeleton }),
-    loadNews(sport, { showSkeleton }),
+    refreshScores(sport, { skeleton: true }),
+    refreshStandings(sport, { skeleton: true, force: true }),
+    loadNews(sport, { showSkeleton: true }),
   ]);
-  prefetchViews(sport); // warm the other sub-tab in the background
   if (activeSport === sportKey) {
     $("#status-line").textContent = `Updated ${fmtTime(new Date().toISOString())}`;
   }
@@ -746,7 +754,18 @@ async function load(sportKey, { showSkeleton = true } = {}) {
 
 function startPolling(key) {
   clearInterval(pollTimer);
-  pollTimer = setInterval(() => load(key, { showSkeleton: false }), POLL_MS);
+  pollTimer = setInterval(async () => {
+    const sport = SPORTS.find((s) => s.key === key);
+    if (!sport) return;
+    await Promise.allSettled([
+      refreshScores(sport, { skeleton: false }),
+      refreshStandings(sport, { skeleton: false }), // TTL-gated inside
+      loadNews(sport, { showSkeleton: false }),
+    ]);
+    if (activeSport === key) {
+      $("#status-line").textContent = `Updated ${fmtTime(new Date().toISOString())}`;
+    }
+  }, POLL_MS);
 }
 
 function selectSport(key) {
@@ -757,6 +776,7 @@ function selectSport(key) {
   document.querySelectorAll(".subtab").forEach((t) =>
     t.setAttribute("aria-selected", String(t.dataset.view === "results")));
   cache.results = cache.standings = cache.news = null;
+  cache.standingsAt = 0;
   load(key);
   startPolling(key);
 }
@@ -767,10 +787,12 @@ function selectView(view) {
   document.querySelectorAll(".subtab").forEach((t) =>
     t.setAttribute("aria-selected", String(t.dataset.view === view)));
   const sport = SPORTS.find((s) => s.key === activeSport);
-  // Use cache if we have it, else fetch.
-  const have = view === "standings" ? cache.standings : cache.results;
-  if (have) rerenderScores();
-  else loadScores(sport, { showSkeleton: true });
+  // Prewarmed by load()/polling — render from cache instantly when we can.
+  if (view === "standings") {
+    cache.standings ? rerenderScores() : refreshStandings(sport, { skeleton: true, force: true });
+  } else {
+    cache.results ? rerenderScores() : refreshScores(sport, { skeleton: true });
+  }
 }
 
 // Each sport is its own path: /mlb, /nba, /f1. Root falls back to the first sport.
@@ -820,6 +842,13 @@ window.addEventListener("popstate", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearInterval(pollTimer);
-  else { load(activeSport, { showSkeleton: false }); startPolling(activeSport); }
+  if (document.hidden) { clearInterval(pollTimer); return; }
+  // Back in focus: silent refresh (no skeleton — we already have cached data).
+  const sport = SPORTS.find((s) => s.key === activeSport);
+  if (sport) {
+    refreshScores(sport, { skeleton: false });
+    refreshStandings(sport, { skeleton: false });
+    loadNews(sport, { showSkeleton: false });
+  }
+  startPolling(activeSport);
 });
