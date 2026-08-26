@@ -461,14 +461,14 @@ function renderDayGroups(games, emptyMsg) {
   }
   c.replaceChildren(frag);
 }
-// Results = games that are live or finished (they have a score). No upcoming.
+// Results = everything today (live, final, and not-yet-started) plus past days.
 function renderResults(games) {
-  renderDayGroups((games || []).filter((g) => g.state !== "pre"),
-    "No completed or live games.");
+  renderDayGroups((games || []).filter((g) => dayDiff(g.date) <= 0),
+    "No games today or recently.");
 }
-// Schedule = upcoming games only (not yet started), earliest day first.
+// Schedule = upcoming games from tomorrow onward.
 function renderSchedule(games) {
-  renderDayGroups((games || []).filter((g) => g.state === "pre"),
+  renderDayGroups((games || []).filter((g) => dayDiff(g.date) >= 1),
     "No upcoming games scheduled.");
 }
 function f1ResultRows(container, data) {
