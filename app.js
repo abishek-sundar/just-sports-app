@@ -389,15 +389,26 @@ function dayLabel(iso) {
 }
 
 /* ---------- Render: results ---------- */
-function teamRow(t, showScore) {
+function teamRow(t, showScore, behind) {
   const row = el("div", "game-row");
   const name = el("span", "team-name", t.name);
   const color = readableTeamColor(t.color);
   if (color) name.style.setProperty("--team", color);
-  if (showScore && !t.winner) name.classList.add("loser");
+  if (showScore && behind) name.classList.add("loser");
   row.appendChild(name);
   if (showScore) row.appendChild(el("span", "score", t.score ?? "–"));
   return row;
+}
+// ESPN's `winner` flag is only meaningful once a game is final — while live it's
+// false for both teams, which used to dim both names ("loser" styling) during
+// every in-progress game. Use the live score instead, and don't dim on a tie.
+function isBehind(g, t) {
+  if (g.state === "post") return !t.winner;
+  if (g.state === "in") {
+    const other = t === g.home ? g.away : g.home;
+    return Number(t.score) < Number(other.score);
+  }
+  return false;
 }
 function gameCard(g) {
   const showScore = g.state !== "pre";
@@ -429,8 +440,8 @@ function gameCard(g) {
   const lead = showScore ? (Number(g.home.score) >= Number(g.away.score) ? g.home : g.away) : g.away;
   const accent = readableTeamColor(lead.color);
   if (accent) card.style.setProperty("--team", accent);
-  card.appendChild(teamRow(g.away, showScore));
-  card.appendChild(teamRow(g.home, showScore));
+  card.appendChild(teamRow(g.away, showScore, isBehind(g, g.away)));
+  card.appendChild(teamRow(g.home, showScore, isBehind(g, g.home)));
   const meta = el("div", "game-meta");
   if (g.state === "in") {
     // Live games: the start time is irrelevant once play is underway —
