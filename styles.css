@@ -221,8 +221,7 @@ body {
   letter-spacing: 0.04em;
 }
 .live-detail {
-  color: var(--ink);
-  font-weight: 700;
+  color: var(--ink); /* brighter than the default faint meta text, same weight so it doesn't look mismatched */
 }
 .final-tag {
   font-weight: 700;

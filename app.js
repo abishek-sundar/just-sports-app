@@ -110,7 +110,7 @@ function hslToRgb({ h, s, l }) {
 function readableTeamColor(hex) {
   const rgb = hexToRgb(hex);
   if (!rgb) return null;
-  const [lo, hi] = isDark() ? [0.16, 0.42] : [0.05, 0.18];
+  const [lo, hi] = isDark() ? [0.12, 0.28] : [0.04, 0.14];
   const hsl = rgbToHsl(rgb);
   let cur = luminance(rgb);
   let tries = 0;
