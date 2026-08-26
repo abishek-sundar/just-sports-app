@@ -186,14 +186,9 @@ async function fetchF1Schedule() {
   // the rest are listed compactly on the Schedule tab.
   const future = races.filter((r) => raceStart(r) > now)
     .sort((a, b) => Number(a.round) - Number(b.round));
-  const next = future.length ? buildNextRace(future[0]) : null;
-  const upcoming = future.slice(1).map((r) => ({
-    round: r.round,
-    name: r.raceName,
-    date: r.date,
-    time: r.time,
-    country: r.Circuit?.Location?.country || "",
-  }));
+  // Every upcoming race carries its full session breakdown (FP1…Race).
+  const upcoming = future.map(buildNextRace);
+  const next = upcoming[0] || null;
   return { next, upcoming, past };
 }
 
@@ -495,6 +490,17 @@ function f1ResultRows(container, data) {
   }
 }
 
+function f1SessionsList(sessions) {
+  const list = el("div", "f1-sessions");
+  for (const s of sessions) {
+    const iso = `${s.date}T${s.time || "12:00:00Z"}`;
+    const row = el("div", "f1-session");
+    row.appendChild(el("span", "f1-session-name", s.label));
+    row.appendChild(el("span", "f1-session-when", `${dayLabel(iso)} · ${fmtTime(iso)}`));
+    list.appendChild(row);
+  }
+  return list;
+}
 function nextRaceCard(next) {
   const item = el("div", "f1-next");
   item.appendChild(el("div", "f1-next-label", "Next Race"));
@@ -504,15 +510,31 @@ function nextRaceCard(next) {
     el("span", "f1-race-sub", `R${next.round}${next.country ? " · " + next.country : ""}`)
   );
   item.appendChild(title);
-  const list = el("div", "f1-sessions");
-  for (const s of next.sessions) {
-    const iso = `${s.date}T${s.time || "12:00:00Z"}`;
-    const row = el("div", "f1-session");
-    row.appendChild(el("span", "f1-session-name", s.label));
-    row.appendChild(el("span", "f1-session-when", `${dayLabel(iso)} · ${fmtTime(iso)}`));
-    list.appendChild(row);
-  }
-  item.appendChild(list);
+  item.appendChild(f1SessionsList(next.sessions));
+  return item;
+}
+// An upcoming race as an expandable card; body shows its session times.
+function f1SessionAccordionItem(race, expanded) {
+  const item = el("div", "f1-race");
+  const btn = el("button", "f1-race-head");
+  btn.type = "button";
+  btn.setAttribute("aria-expanded", String(expanded));
+  const title = el("div", "f1-race-title");
+  title.append(
+    el("span", "f1-race-name", race.name),
+    el("span", "f1-race-sub", `R${race.round} · ${dayLabel(race.date)}${race.country ? " · " + race.country : ""}`)
+  );
+  btn.append(title, el("span", "f1-race-chevron", expanded ? "▾" : "▸"));
+  const body = el("div", "f1-race-body");
+  body.hidden = !expanded;
+  body.appendChild(f1SessionsList(race.sessions));
+  btn.addEventListener("click", () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!open));
+    btn.querySelector(".f1-race-chevron").textContent = open ? "▸" : "▾";
+    body.hidden = open;
+  });
+  item.append(btn, body);
   return item;
 }
 
@@ -565,33 +587,14 @@ function renderF1Results(data) {
   c.replaceChildren(frag);
 }
 
-// Schedule tab: the next race (full session breakdown) + later races, compact.
+// Schedule tab: every upcoming race as an expandable card of session times.
+// The next race is expanded by default; the rest open on click.
 function renderF1ScheduleView(data) {
   const c = scoresEl();
-  const next = data?.next;
   const upcoming = data?.upcoming || [];
-  if (!next && !upcoming.length) { c.replaceChildren(el("p", "empty", "No upcoming races scheduled.")); return; }
+  if (!upcoming.length) { c.replaceChildren(el("p", "empty", "No upcoming races scheduled.")); return; }
   const frag = document.createDocumentFragment();
-  if (next) frag.appendChild(nextRaceCard(next));
-  if (upcoming.length) {
-    const list = el("div", "f1-upcoming");
-    list.appendChild(el("div", "f1-upcoming-label", "Later"));
-    for (const race of upcoming) {
-      const iso = `${race.date}T${race.time || "12:00:00Z"}`;
-      const row = el("div", "f1-upcoming-row");
-      const top = el("div", "f1-upcoming-top");
-      top.append(
-        el("span", "f1-race-name", race.name),
-        el("span", "f1-upcoming-when", `${dayLabel(iso)} · ${fmtTime(iso)}`)
-      );
-      row.append(
-        top,
-        el("span", "f1-race-sub", `R${race.round}${race.country ? " · " + race.country : ""}`)
-      );
-      list.appendChild(row);
-    }
-    frag.appendChild(list);
-  }
+  upcoming.forEach((race, i) => frag.appendChild(f1SessionAccordionItem(race, i === 0)));
   c.replaceChildren(frag);
 }
 
