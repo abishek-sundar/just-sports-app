@@ -1,7 +1,7 @@
 /* JustSports service worker — network-first for data, cache the app shell for offline.
  * Deliberately does NOT cache API responses (scores must be fresh).
  */
-const SHELL = "justsports-shell-v17";
+const SHELL = "justsports-shell-v18";
 const SHELL_FILES = [
   "./",
   "./index.html",

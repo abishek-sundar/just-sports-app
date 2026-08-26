@@ -714,6 +714,22 @@ async function loadNews(sport, { showSkeleton } = {}) {
   }
 }
 
+// Warm the caches for views the user isn't looking at yet, so switching sub-tabs
+// is instant (no skeleton). Only fills what's missing; the active view already
+// loaded above, and background polling keeps the active view fresh.
+function prefetchViews(sport) {
+  if (!cache.standings) {
+    (sport.kind === "f1" ? fetchF1Standings() : fetchBallStandings(sport))
+      .then((g) => { if (activeSport === sport.key && !cache.standings) cache.standings = g; })
+      .catch(() => {});
+  }
+  if (!cache.results) {
+    (sport.kind === "f1" ? fetchF1Schedule() : fetchBallScores(sport))
+      .then((d) => { if (activeSport === sport.key && !cache.results) cache.results = d; })
+      .catch(() => {});
+  }
+}
+
 async function load(sportKey, { showSkeleton = true } = {}) {
   const sport = SPORTS.find((s) => s.key === sportKey);
   if (!sport) return;
@@ -722,6 +738,7 @@ async function load(sportKey, { showSkeleton = true } = {}) {
     loadScores(sport, { showSkeleton }),
     loadNews(sport, { showSkeleton }),
   ]);
+  prefetchViews(sport); // warm the other sub-tab in the background
   if (activeSport === sportKey) {
     $("#status-line").textContent = `Updated ${fmtTime(new Date().toISOString())}`;
   }
