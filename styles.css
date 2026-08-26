@@ -20,16 +20,16 @@
 
 html[data-theme="dark"] {
   --bg:        #050505;  /* true near-black */
-  --surface:   #171512;
-  --surface-2: #221f19;
-  --border:    #4a4536;  /* brighter so card/row edges stay visible on near-black */
-  --ink:       #f8f4ea;
-  --ink-soft:  #d3cab6;  /* lightened for readability */
-  --ink-faint: #a89d86;  /* lightened for readability */
-  --accent:    #ff9a63;  /* glowing orange on black */
-  --accent-soft: #3a2717;
+  --surface:   #121110;
+  --surface-2: #1c1a16;
+  --border:    #2b2820;
+  --ink:       #f3ede2;
+  --ink-soft:  #bcb3a0;
+  --ink-faint: #837a68;
+  --accent:    #ff8a4d;  /* glowing orange on black */
+  --accent-soft: #2e2013;
   --last:      #86bcf2;  /* last-race accent on black */
-  --live:      #ff6f6f;
+  --live:      #ff5f5f;
   --shadow:    0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
@@ -197,6 +197,7 @@ body {
 .team-name {
   font-weight: 700;
   color: var(--team, var(--ink));
+  filter: saturate(1.25);
 }
 .team-name.loser { opacity: 0.62; font-weight: 400; }
 .score {
