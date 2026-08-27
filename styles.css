@@ -128,7 +128,17 @@ body {
 }
 
 /* Results / Standings sub-tabs */
-.col-head { margin-bottom: 10px; }
+.col-head { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.imsa-series {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
 .subtabs { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 999px; padding: 3px; }
 .subtab {
   font: inherit;

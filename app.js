@@ -18,6 +18,7 @@ const SPORTS = [
   { key: "mlb", label: "MLB", kind: "ball", espn: "baseball/mlb",    window: { past: 2, future: 7 } },
   { key: "nba", label: "NBA", kind: "ball", espn: "basketball/nba",  window: { past: 2, future: 7 } },
   { key: "f1",  label: "F1",  kind: "f1",   espnNews: "racing/f1" },
+  { key: "imsa", label: "IMSA", kind: "imsa" },
 ];
 
 // F1 constructor colors (Jolpica doesn't supply them). Extend as the grid changes.
@@ -671,12 +672,142 @@ function renderF1ScheduleView(data) {
   c.replaceChildren(frag);
 }
 
+/* ---------- IMSA ---------- */
+// IMSA's own site is bot-protected, but its official timing/results system
+// (Al Kamel, same vendor most endurance series use) is a plain, unauthenticated
+// static file tree — no key, no scraping fragile marketing HTML. It has no
+// forward schedule (folders only appear once an event happens), so Results and
+// Standings only for now. Proxied same-origin via nginx at /imsa/ since the
+// upstream sends no CORS headers.
+const IMSA_SERIES = [
+  { key: "mx5", label: "MX-5 Cup", match: "mx-5 cup" },
+  { key: "pilot", label: "Pilot Challenge", match: "michelin pilot challenge" },
+  { key: "weathertech", label: "WeatherTech Champ.", match: "weathertech sportscar championship" },
+];
+let activeImsaSeries = "mx5";
+const currentImsaSeries = () => IMSA_SERIES.find((s) => s.key === activeImsaSeries) || IMSA_SERIES[0];
+
+function imsaUrl(path) {
+  return "/imsa/" + path.split("/").map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/");
+}
+async function imsaJson(path) {
+  const text = await (await fetch(imsaUrl(path))).text();
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
+}
+// The results host serves plain Apache directory listings — parse the <a href>
+// entries, skipping the sort-column links (?C=...) and the parent-dir link.
+async function imsaDir(path) {
+  const html = await (await fetch(imsaUrl(path))).text();
+  const items = [];
+  const re = /<a href="([^"?][^"]*)">/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const href = decodeURIComponent(m[1]);
+    if (href.startsWith("/")) continue; // parent-directory link
+    items.push({ name: href.replace(/\/$/, ""), isDir: href.endsWith("/") });
+  }
+  return items;
+}
+// Walk venues newest-first until one has this series (not every series races
+// every weekend), then cache the result — the current event only changes
+// roughly biweekly, no need to re-walk every poll.
+const _imsaEventPathCache = {};
+async function imsaLatestEventPath(seriesCfg) {
+  if (_imsaEventPathCache[seriesCfg.key]) return _imsaEventPathCache[seriesCfg.key];
+  const seasons = (await imsaDir("Results/")).filter((i) => i.isDir).sort((a, b) => b.name.localeCompare(a.name));
+  if (!seasons.length) return null;
+  const season = seasons[0].name;
+  const venues = (await imsaDir(`Results/${season}/`)).filter((i) => i.isDir)
+    .sort((a, b) => parseInt(b.name) - parseInt(a.name));
+  for (const v of venues) {
+    const series = await imsaDir(`Results/${season}/${v.name}/`);
+    const match = series.find((s) => s.isDir && s.name.toLowerCase().includes(seriesCfg.match));
+    if (match) {
+      const path = `Results/${season}/${v.name}/${match.name}/`;
+      _imsaEventPathCache[seriesCfg.key] = path;
+      return path;
+    }
+  }
+  return null;
+}
+async function fetchImsaResults(seriesCfg) {
+  const eventPath = await imsaLatestEventPath(seriesCfg);
+  if (!eventPath) return null;
+  const items = await imsaDir(eventPath);
+  const raceDirs = items.filter((i) => i.isDir && /^race/i.test(i.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const races = [];
+  for (const r of raceDirs) {
+    const files = await imsaDir(eventPath + r.name + "/");
+    const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
+    if (!resultFile) continue;
+    races.push({ session: r.name, data: await imsaJson(eventPath + r.name + "/" + resultFile.name) });
+  }
+  return { eventPath, races };
+}
+async function fetchImsaStandings(seriesCfg) {
+  const eventPath = await imsaLatestEventPath(seriesCfg);
+  if (!eventPath) return null;
+  const items = await imsaDir(eventPath);
+  const pointsDir = items.find((i) => i.isDir && /points.*data/i.test(i.name));
+  if (!pointsDir) return null;
+  const files = (await imsaDir(eventPath + pointsDir.name + "/"))
+    .filter((f) => !f.isDir && /drivers\.json$/i.test(f.name) && !/award/i.test(f.name));
+  const groups = [];
+  for (const f of files) {
+    // "IWSC 01 GTP Drivers.json" -> class "GTP"; "MX-5 01 Drivers.json" -> single class.
+    // The "01a"-style secondary listings (e.g. GTD-Am splits) are skipped.
+    const m = f.name.match(/^\S+\s+\d+\s+(?:([A-Za-z0-9-]+)\s+)?Drivers\.json$/i);
+    if (!m) continue;
+    const data = await imsaJson(eventPath + pointsDir.name + "/" + f.name);
+    const entries = (data.classification || [])
+      .sort((a, b) => a.position - b.position)
+      .map((e) => ({ name: e.key, points: Math.round(e.total_points) }));
+    if (entries.length) groups.push({ title: m[1] || seriesCfg.label, pointsOnly: true, entries });
+  }
+  return groups;
+}
+function imsaRaceCard(session, data) {
+  const s = data.session || {};
+  const card = el("div", "f1-race");
+  const head = el("div", "f1-race-head");
+  const title = el("div", "f1-race-title");
+  title.append(
+    el("span", "f1-race-name", `${s.event_name || ""} — ${session}`),
+    el("span", "f1-race-sub", s.circuit ? s.circuit.name : "")
+  );
+  head.appendChild(title);
+  card.appendChild(head);
+  const body = el("div", "f1-race-body");
+  (data.classification || []).slice(0, 20).forEach((e) => {
+    const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
+    const row = el("div", "f1-row");
+    row.appendChild(el("span", "f1-pos", String(e.position)));
+    const name = el("span", "f1-driver", driver || `#${e.number}`);
+    row.appendChild(name);
+    row.appendChild(el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`));
+    row.appendChild(el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
+    body.appendChild(row);
+  });
+  card.appendChild(body);
+  return card;
+}
+function renderImsaResults(data) {
+  const c = scoresEl();
+  const races = data?.races || [];
+  if (!races.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
+  const frag = document.createDocumentFragment();
+  for (const r of races) frag.appendChild(imsaRaceCard(r.session, r.data));
+  c.replaceChildren(frag);
+}
+
 /* ---------- Render: standings ---------- */
 function renderStandings(groups) {
   const c = scoresEl();
   if (!groups || !groups.length) { c.replaceChildren(el("p", "empty", "No standings available.")); return; }
-  // F1 (Drivers + Constructors) sits side by side; everything else stacks.
-  const twoCol = groups.length > 1 && groups.every((g) => g.f1);
+  // Multi-group standings (F1's Drivers+Constructors, IMSA's per-class tables)
+  // sit side by side; single-table sports (MLB/NBA divisions) stack.
+  const twoCol = groups.length > 1 && groups.every((g) => g.f1 || g.pointsOnly);
   const wrap = el("div", twoCol ? "standings standings-cols" : "standings");
   for (const g of groups) {
     const grp = el("div", "standings-group");
@@ -695,7 +826,9 @@ function renderStandings(groups) {
         row.appendChild(team);
       }
       const figs = el("div", "st-figs");
-      if (g.f1) {
+      if (g.pointsOnly) {
+        figs.append(bold(e.points));
+      } else if (g.f1) {
         figs.append(bold(e.points), muted(`${e.wins} W`));
       } else {
         figs.append(bold(`${e.wins}-${e.losses}`), muted(e.pct || ""));
@@ -751,6 +884,7 @@ function rerenderScores() {
   const sport = SPORTS.find((s) => s.key === cache.sport);
   if (!sport) return;
   if (activeView === "standings") return renderStandings(cache.standings);
+  if (sport.kind === "imsa") return renderImsaResults(cache.results);
   if (sport.kind === "f1") {
     return activeView === "schedule"
       ? renderF1ScheduleView(cache.results)
@@ -764,10 +898,13 @@ const onScoresView = () => activeView === "results" || activeView === "schedule"
 async function refreshScores(sport, { skeleton = false } = {}) {
   if (skeleton && onScoresView()) skeletons(scoresEl());
   try {
-    // F1 race list is static within a session; don't refetch on polls (keeps
-    // accordion expand state, and races only shift after one actually finishes).
-    if (sport.kind === "f1" && cache.results && !skeleton) return;
-    const data = sport.kind === "f1" ? await fetchF1Schedule() : await fetchBallScores(sport);
+    // F1's race list and IMSA's results are static within a session; don't
+    // refetch on polls (F1 keeps accordion expand state; IMSA has no live
+    // scoring anyway — results only change once a whole new event posts).
+    if ((sport.kind === "f1" || sport.kind === "imsa") && cache.results && !skeleton) return;
+    const data = sport.kind === "f1" ? await fetchF1Schedule()
+      : sport.kind === "imsa" ? await fetchImsaResults(currentImsaSeries())
+      : await fetchBallScores(sport);
     if (activeSport !== sport.key) return;
     cache.results = data;
     if (onScoresView()) rerenderScores();
@@ -786,7 +923,9 @@ async function refreshStandings(sport, { skeleton = false, force = false } = {})
   }
   if (skeleton && activeView === "standings") skeletons(scoresEl());
   try {
-    const groups = sport.kind === "f1" ? await fetchF1Standings() : await fetchBallStandings(sport);
+    const groups = sport.kind === "f1" ? await fetchF1Standings()
+      : sport.kind === "imsa" ? await fetchImsaStandings(currentImsaSeries())
+      : await fetchBallStandings(sport);
     if (activeSport !== sport.key) return;
     cache.standings = groups;
     cache.standingsAt = Date.now();
@@ -798,6 +937,7 @@ async function refreshStandings(sport, { skeleton = false, force = false } = {})
 }
 
 async function loadNews(sport, { showSkeleton } = {}) {
+  if (sport.kind === "imsa") return; // no news source for IMSA; column is hidden for this sport
   if (showSkeleton) skeletons(newsEl());
   try {
     const items = await fetchNews(sport);
@@ -848,10 +988,23 @@ function selectSport(key) {
     t.setAttribute("aria-selected", String(t.dataset.key === key)));
   document.querySelectorAll(".subtab").forEach((t) =>
     t.setAttribute("aria-selected", String(t.dataset.view === "results")));
+  const isImsa = SPORTS.find((s) => s.key === key)?.kind === "imsa";
+  // IMSA has no forward schedule (yet) and no news source — hide those, show the series picker instead.
+  $('.subtab[data-view="schedule"]').hidden = isImsa;
+  $("#news-col").hidden = isImsa;
+  $("#imsa-series").hidden = !isImsa;
   cache.results = cache.standings = cache.news = null;
   cache.standingsAt = 0;
   load(key);
   startPolling(key);
+}
+
+function selectImsaSeries(key) {
+  if (key === activeImsaSeries) return;
+  activeImsaSeries = key;
+  cache.results = cache.standings = null;
+  cache.standingsAt = 0;
+  load(activeSport);
 }
 
 function selectView(view) {
@@ -898,6 +1051,11 @@ function buildTabs() {
   }
   document.querySelectorAll(".subtab").forEach((t) =>
     t.addEventListener("click", () => selectView(t.dataset.view)));
+
+  const seriesSelect = $("#imsa-series");
+  for (const s of IMSA_SERIES) seriesSelect.appendChild(new Option(s.label, s.key));
+  seriesSelect.value = activeImsaSeries;
+  seriesSelect.addEventListener("change", () => selectImsaSeries(seriesSelect.value));
 }
 
 /* ---------- Boot ---------- */
