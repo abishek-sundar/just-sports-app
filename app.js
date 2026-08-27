@@ -483,19 +483,26 @@ function dayOrderKey(iso) {
   if (diff === 0) return [0, 0];
   return diff > 0 ? [1, diff] : [2, -diff];
 }
+// A live game keeps its start-of-day date, so a game that tips off at 11pm and
+// is still going at 12:30am would otherwise fall out of "Today" into
+// "Yesterday" the moment the clock rolls over — silly, since it's still being
+// played right now. Group/label live games by the current moment instead.
+function groupIso(g) {
+  return g.state === "in" ? new Date().toISOString() : g.date;
+}
 function renderDayGroups(games, emptyMsg) {
   const c = scoresEl();
   if (!games || !games.length) { c.replaceChildren(el("p", "empty", emptyMsg)); return; }
   // Group by calendar day.
   const byDay = new Map();
   for (const g of games) {
-    const k = dayKey(g.date);
+    const k = dayKey(groupIso(g));
     if (!byDay.has(k)) byDay.set(k, []);
     byDay.get(k).push(g);
   }
   const days = [...byDay.entries()].sort((a, b) => {
-    const [ga, sa] = dayOrderKey(a[1][0].date);
-    const [gb, sb] = dayOrderKey(b[1][0].date);
+    const [ga, sa] = dayOrderKey(groupIso(a[1][0]));
+    const [gb, sb] = dayOrderKey(groupIso(b[1][0]));
     return ga - gb || sa - sb;
   });
 
@@ -509,9 +516,9 @@ function renderDayGroups(games, emptyMsg) {
       const ta = new Date(a.date), tb = new Date(b.date);
       return a.state === "post" ? tb - ta : ta - tb;
     });
-    const isToday = dayDiff(dayGames[0].date) === 0;
+    const isToday = dayDiff(groupIso(dayGames[0])) === 0;
     const group = el("div", isToday ? "day-group today" : "day-group");
-    group.appendChild(el("div", "day-header", dayLabel(dayGames[0].date)));
+    group.appendChild(el("div", "day-header", dayLabel(groupIso(dayGames[0]))));
     const gamesWrap = el("div", "day-games");
     for (const g of dayGames) gamesWrap.appendChild(gameCard(g));
     group.appendChild(gamesWrap);
