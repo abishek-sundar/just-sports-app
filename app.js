@@ -768,13 +768,13 @@ async function fetchImsaStandings(seriesCfg) {
   }
   return groups;
 }
-function imsaRaceCard(session, data) {
+function imsaRaceCard(data) {
   const s = data.session || {};
   const card = el("div", "f1-race");
   const head = el("div", "f1-race-head");
   const title = el("div", "f1-race-title");
   title.append(
-    el("span", "f1-race-name", `${s.event_name || ""} — ${session}`),
+    el("span", "f1-race-name", `${s.event_name || ""} — ${s.session_name || ""}`),
     el("span", "f1-race-sub", s.circuit ? s.circuit.name : "")
   );
   head.appendChild(title);
@@ -798,7 +798,7 @@ function renderImsaResults(data) {
   const races = data?.races || [];
   if (!races.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
   const frag = document.createDocumentFragment();
-  for (const r of races) frag.appendChild(imsaRaceCard(r.session, r.data));
+  for (const r of races) frag.appendChild(imsaRaceCard(r.data));
   c.replaceChildren(frag);
 }
 
