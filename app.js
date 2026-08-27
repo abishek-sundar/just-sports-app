@@ -675,10 +675,57 @@ function renderF1ScheduleView(data) {
 /* ---------- IMSA ---------- */
 // IMSA's own site is bot-protected, but its official timing/results system
 // (Al Kamel, same vendor most endurance series use) is a plain, unauthenticated
-// static file tree — no key, no scraping fragile marketing HTML. It has no
-// forward schedule (folders only appear once an event happens), so Results and
-// Standings only for now. Proxied same-origin via nginx at /imsa/ since the
-// upstream sends no CORS headers.
+// static file tree — no key, no scraping fragile marketing HTML. Results and
+// Standings come from there. It has no forward schedule though (folders only
+// appear once an event happens), so the remaining 2026 schedule below is
+// hand-entered from each series' official calendar (Wikipedia, checked
+// 2026-08-27) rather than fetched — there's no free API for it, and the
+// season's remaining rounds don't change. A race falls off this list on its
+// own once its date passes; no pruning needed, no API to keep working.
+const IMSA_SCHEDULE = {
+  // WeatherTech & Pilot Challenge run one race per weekend, on the last day.
+  weathertech: [
+    { venue: "Indianapolis Motor Speedway", date: "2026-09-20" },
+    { venue: "Michelin Raceway Road Atlanta (Petit Le Mans)", date: "2026-10-03" },
+  ],
+  pilot: [
+    { venue: "Indianapolis Motor Speedway", date: "2026-09-20" },
+    { venue: "Michelin Raceway Road Atlanta", date: "2026-10-03" },
+  ],
+  // MX-5 Cup runs two races a weekend; every round so far this season raced
+  // Saturday (Race 1) then Sunday (Race 2) of its listed weekend, so that's
+  // assumed here too — Wikipedia's calendar only gives the weekend range,
+  // not per-race days, this far ahead of the event.
+  mx5: [
+    { venue: "Indianapolis Motor Speedway — Race 1", date: "2026-09-19" },
+    { venue: "Indianapolis Motor Speedway — Race 2", date: "2026-09-20" },
+    { venue: "Michelin Raceway Road Atlanta — Race 1", date: "2026-10-02" },
+    { venue: "Michelin Raceway Road Atlanta — Race 2", date: "2026-10-03" },
+  ],
+};
+function imsaUpcomingSchedule(seriesCfg) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return (IMSA_SCHEDULE[seriesCfg.key] || [])
+    .filter((r) => new Date(r.date + "T00:00:00") >= today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+function renderImsaSchedule(seriesCfg) {
+  const c = scoresEl();
+  const races = imsaUpcomingSchedule(seriesCfg);
+  if (!races.length) { c.replaceChildren(el("p", "empty", "No more races scheduled this season.")); return; }
+  const frag = document.createDocumentFragment();
+  for (const r of races) {
+    const row = el("div", "f1-upcoming-row");
+    const top = el("div", "f1-upcoming-top");
+    top.append(
+      el("span", null, r.venue),
+      el("span", "f1-upcoming-when", new Date(r.date + "T00:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }))
+    );
+    row.appendChild(top);
+    frag.appendChild(row);
+  }
+  c.replaceChildren(frag);
+}
 const IMSA_SERIES = [
   { key: "mx5", label: "MX-5 Cup", match: "mx-5 cup" },
   { key: "pilot", label: "Pilot Challenge", match: "michelin pilot challenge" },
@@ -1011,7 +1058,9 @@ function rerenderScores() {
   const sport = SPORTS.find((s) => s.key === cache.sport);
   if (!sport) return;
   if (activeView === "standings") return renderStandings(cache.standings);
-  if (sport.kind === "imsa") return renderImsaResults(cache.results);
+  if (sport.kind === "imsa") {
+    return activeView === "schedule" ? renderImsaSchedule(currentImsaSeries()) : renderImsaResults(cache.results);
+  }
   if (sport.kind === "f1") {
     return activeView === "schedule"
       ? renderF1ScheduleView(cache.results)
@@ -1023,6 +1072,9 @@ const onScoresView = () => activeView === "results" || activeView === "schedule"
 
 // Scoreboard (Results + Schedule share this). Refetched each poll for liveness.
 async function refreshScores(sport, { skeleton = false } = {}) {
+  // IMSA's schedule is static hand-entered data (see IMSA_SCHEDULE) — nothing
+  // to fetch, just render straight from it.
+  if (sport.kind === "imsa" && activeView === "schedule") return rerenderScores();
   if (skeleton && onScoresView()) skeletons(scoresEl());
   try {
     // F1's race list and IMSA's results are static within a session; don't
@@ -1116,8 +1168,7 @@ function selectSport(key) {
   document.querySelectorAll(".subtab").forEach((t) =>
     t.setAttribute("aria-selected", String(t.dataset.view === "results")));
   const isImsa = SPORTS.find((s) => s.key === key)?.kind === "imsa";
-  // IMSA has no forward schedule (yet) and no news source — hide those, show the series picker instead.
-  $('.subtab[data-view="schedule"]').hidden = isImsa;
+  // IMSA has no news source — hide that column and show the series picker instead.
   $("#news-col").hidden = isImsa;
   $("#imsa-series").hidden = !isImsa;
   cache.results = cache.standings = cache.news = null;
