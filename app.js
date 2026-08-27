@@ -1171,6 +1171,7 @@ function selectSport(key) {
   // IMSA has no news source — hide that column and show the series picker instead.
   $("#news-col").hidden = isImsa;
   $("#imsa-series").hidden = !isImsa;
+  $("#news-jump").hidden = isImsa;
   cache.results = cache.standings = cache.news = null;
   cache.standingsAt = 0;
   load(key);
@@ -1234,6 +1235,9 @@ function buildTabs() {
   for (const s of IMSA_SERIES) seriesSelect.appendChild(new Option(s.label, s.key));
   seriesSelect.value = activeImsaSeries;
   seriesSelect.addEventListener("change", () => selectImsaSeries(seriesSelect.value));
+
+  $("#news-jump").addEventListener("click", () =>
+    newsEl().scrollIntoView({ behavior: "smooth", block: "start" }));
 }
 
 /* ---------- Boot ---------- */

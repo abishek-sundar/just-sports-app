@@ -154,6 +154,23 @@ body {
 @media (max-width: 480px) {
   .imsa-series { flex: 1 1 100%; max-width: none; }
 }
+.news-jump {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.news-jump:hover { color: var(--accent); border-color: var(--accent); }
+.news-jump[hidden] { display: none; }
 .subtabs { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 999px; padding: 3px; }
 .subtab {
   font: inherit;
