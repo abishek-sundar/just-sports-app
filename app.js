@@ -717,6 +717,9 @@ async function imsaDir(path) {
 // independent. Cached per series for the session (in-memory only; the real
 // caching layer is nginx above).
 const _imsaSeasonCache = {};
+// One entry per RACE, not per event/venue — a double-header weekend (MX-5
+// Cup) produces two separate accordion cards, matching what the site
+// actually schedules rather than nesting a sub-list inside one card.
 async function imsaSeasonEvents(seriesCfg) {
   if (_imsaSeasonCache[seriesCfg.key]) return _imsaSeasonCache[seriesCfg.key];
   const seasons = (await imsaDir("Results/")).filter((i) => i.isDir).sort((a, b) => b.name.localeCompare(a.name));
@@ -727,21 +730,23 @@ async function imsaSeasonEvents(seriesCfg) {
   const perVenue = await Promise.all(venues.map(async (v) => {
     const series = await imsaDir(`Results/${season}/${v.name}/`);
     const match = series.find((s) => s.isDir && s.name.toLowerCase().includes(seriesCfg.match));
-    if (!match) return null;
+    if (!match) return [];
     const eventPath = `Results/${season}/${v.name}/${match.name}/`;
-    // One extra listing per matched event (not per venue) to date-range the
-    // weekend for the accordion header — cheap, and nginx caches it anyway.
-    const sessionDates = (await imsaDir(eventPath))
-      .filter((i) => i.isDir && /race|practice|qualifying/i.test(i.name))
-      .map((i) => imsaSessionDate(i.name))
-      .filter(Boolean);
-    return {
-      venue: v.name.replace(/^\d+_/, ""),
+    const venue = v.name.replace(/^\d+_/, "");
+    // Session folders are timestamp-prefixed, e.g. "202608221745_Race 1".
+    const raceDirs = (await imsaDir(eventPath)).filter((i) => i.isDir && /race/i.test(i.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return raceDirs.map((r, raceIndex) => ({
+      venue,
       eventPath,
-      dateRange: imsaDateRangeLabel(sessionDates),
-    };
+      raceFolder: r.name,
+      sessionLabel: r.name.replace(/^\d+_/, ""),
+      when: imsaSessionWhen(r.name),
+      raceIndex,
+      raceCount: raceDirs.length,
+    }));
   }));
-  const events = perVenue.filter(Boolean);
+  const events = perVenue.flat();
   _imsaSeasonCache[seriesCfg.key] = events;
   return events;
 }
@@ -759,28 +764,10 @@ function imsaSessionWhen(folderName) {
   if (!dt) return "";
   return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} · ${dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
-// Whole-weekend date range (practice through race) for the event's accordion header.
-function imsaDateRangeLabel(dates) {
-  if (!dates.length) return "";
-  const sorted = [...dates].sort((a, b) => a - b);
-  const first = sorted[0], last = sorted[sorted.length - 1];
-  const fmt = (d) => d.toLocaleDateString([], { month: "short", day: "numeric" });
-  return first.toDateString() === last.toDateString() ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
-}
-// One event's race session(s) (a double-header has two) — fetched lazily on
-// accordion expand, same pattern as F1's past-race results.
-async function imsaEventRaces(eventPath) {
-  const items = await imsaDir(eventPath);
-  // Session folders are timestamp-prefixed, e.g. "202608221745_Race 1".
-  const raceDirs = items.filter((i) => i.isDir && /race/i.test(i.name))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  const races = [];
-  for (const r of raceDirs) {
-    const files = await imsaDir(eventPath + r.name + "/");
-    const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
-    if (resultFile) races.push({ folder: r.name, data: await imsaJson(eventPath + r.name + "/" + resultFile.name) });
-  }
-  return races;
+async function imsaFetchRace(eventPath, raceFolder) {
+  const files = await imsaDir(eventPath + raceFolder + "/");
+  const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
+  return resultFile ? imsaJson(eventPath + raceFolder + "/" + resultFile.name) : null;
 }
 // Shared points-file discovery: the drivers/entrants files live in the
 // LATEST event's "Points Data" folder, but each one's classification carries
@@ -833,7 +820,7 @@ function imsaSessionsForVenue(sessions, venue) {
     // WeatherTech's points file lists a separate Qualifying session per venue
     // alongside the Race (session_name "Qualifying"/"Race"); MX-5/Pilot
     // Challenge just use "Round N" for the race itself. Excluding
-    // qualifying/practice keeps this list 1:1 with our races array either way.
+    // qualifying/practice keeps this list 1:1 with our race entries either way.
     .filter((s) => !/qualifying|practice/i.test(s.session_name))
     .sort((a, b) => a.session_index - b.session_index);
 }
@@ -857,53 +844,41 @@ async function imsaSeriesPointsBySession(seriesCfg) {
   }
   return { sessions, byClass };
 }
-function imsaResultRows(container, races, pointsCtx, venue) {
-  if (!races.length) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
-  const candidateSessions = pointsCtx ? imsaSessionsForVenue(pointsCtx.sessions, venue) : [];
-  races.forEach((race, i) => {
-    const s = race.data.session || {};
-    const head = el("div", "f1-head game-row");
-    if (i > 0) head.style.marginTop = "14px";
-    head.append(
-      el("span", null, s.session_name || "Race"),
-      el("span", "f1-session-when", imsaSessionWhen(race.folder))
+function imsaResultRows(container, raceData, pointsCtx, entry) {
+  if (!raceData) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
+  const candidateSessions = pointsCtx ? imsaSessionsForVenue(pointsCtx.sessions, entry.venue) : [];
+  const sessionIndex = candidateSessions[entry.raceIndex]?.session_index;
+  (raceData.classification || []).slice(0, 20).forEach((e) => {
+    const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
+    const driverKey = (e.drivers || [])[0] ? `${e.drivers[0].firstname} ${e.drivers[0].surname}` : null;
+    const classPoints = pointsCtx && (pointsCtx.byClass[e.class] || pointsCtx.byClass._default);
+    const gained = sessionIndex && driverKey && classPoints?.[driverKey]
+      ? classPoints[driverKey].find((p) => p.session_index === sessionIndex)
+      : null;
+    const row = el("div", "f1-row");
+    const mid = el("div");
+    mid.append(
+      el("span", "f1-driver", driver || `#${e.number}`),
+      document.createTextNode(" "),
+      el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`)
     );
-    container.appendChild(head);
-    const sessionIndex = candidateSessions[i]?.session_index;
-    (race.data.classification || []).slice(0, 20).forEach((e) => {
-      const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
-      const driverKey = (e.drivers || [])[0] ? `${e.drivers[0].firstname} ${e.drivers[0].surname}` : null;
-      const classPoints = pointsCtx && (pointsCtx.byClass[e.class] || pointsCtx.byClass._default);
-      const gained = sessionIndex && driverKey && classPoints?.[driverKey]
-        ? classPoints[driverKey].find((p) => p.session_index === sessionIndex)
-        : null;
-      const row = el("div", "f1-row");
-      const mid = el("div");
-      mid.append(
-        el("span", "f1-driver", driver || `#${e.number}`),
-        document.createTextNode(" "),
-        el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`)
-      );
-      const pts = el("span", "f1-pts", gained ? `+${Math.round(gained.total_points)}` : "");
-      row.append(el("span", "f1-pos", String(e.position)), mid, pts,
-        el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
-      container.appendChild(row);
-    });
+    const pts = el("span", "f1-pts", gained ? `+${Math.round(gained.total_points)}` : "");
+    row.append(el("span", "f1-pos", String(e.position)), mid, pts,
+      el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
+    container.appendChild(row);
   });
 }
-// One completed event as a collapsed accordion; results load lazily on expand
+// One completed race as a collapsed accordion; results load lazily on expand
 // (mirrors f1RaceAccordionItem — same reasoning: an unwatched race can't spoil).
-function imsaEventAccordionItem(event) {
+function imsaRaceAccordionItem(entry) {
   const item = el("div", "f1-race");
   const btn = el("button", "f1-race-head");
   btn.type = "button";
   btn.setAttribute("aria-expanded", "false");
-  const title = el("div", "f1-race-title");
-  title.append(
-    el("span", "f1-race-name", event.venue),
-    el("span", "f1-race-sub", event.dateRange)
-  );
-  btn.append(title, el("span", "f1-race-chevron", "▸"));
+  const name = entry.raceCount > 1 ? `${entry.venue} — ${entry.sessionLabel}` : entry.venue;
+  const right = el("span", "imsa-race-right");
+  right.append(el("span", "f1-session-when", entry.when), el("span", "f1-race-chevron", "▸"));
+  btn.append(el("span", "f1-race-name", name), right);
   const body = el("div", "f1-race-body");
   body.hidden = true;
 
@@ -915,12 +890,12 @@ function imsaEventAccordionItem(event) {
     if (!open && !body.dataset.loaded) {
       body.appendChild(el("div", "f1-loading", "Loading…"));
       try {
-        const [races, pointsCtx] = await Promise.all([
-          imsaEventRaces(event.eventPath),
+        const [raceData, pointsCtx] = await Promise.all([
+          imsaFetchRace(entry.eventPath, entry.raceFolder),
           imsaSeriesPointsBySession(currentImsaSeries()).catch(() => null),
         ]);
         body.replaceChildren();
-        imsaResultRows(body, races, pointsCtx, event.venue);
+        imsaResultRows(body, raceData, pointsCtx, entry);
         body.dataset.loaded = "1";
       } catch {
         body.replaceChildren(el("p", "error", "Couldn't load results."));
@@ -931,11 +906,11 @@ function imsaEventAccordionItem(event) {
   item.append(btn, body);
   return item;
 }
-function renderImsaResults(events) {
+function renderImsaResults(entries) {
   const c = scoresEl();
-  if (!events || !events.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
+  if (!entries || !entries.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
   const frag = document.createDocumentFragment();
-  for (const event of events) frag.appendChild(imsaEventAccordionItem(event));
+  for (const entry of entries) frag.appendChild(imsaRaceAccordionItem(entry));
   c.replaceChildren(frag);
 }
 

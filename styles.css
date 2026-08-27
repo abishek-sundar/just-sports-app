@@ -333,6 +333,7 @@ body {
 .f1-race-name { font-weight: 500; }
 .f1-race-sub { font-size: 0.76rem; color: var(--ink-faint); }
 .f1-race-chevron { color: var(--ink-faint); font-size: 0.8rem; }
+.imsa-race-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .f1-race-head[aria-expanded="true"] .f1-race-chevron { color: var(--accent); }
 .f1-race-body { padding: 4px 14px 12px; border-top: 1px solid var(--border); }
 .f1-loading { color: var(--ink-faint); font-size: 0.85rem; padding: 8px 0; }
