@@ -23,6 +23,10 @@
     <!-- tab buttons injected by app.js -->
   </nav>
 
+  <div class="imsa-series-bar">
+    <select id="imsa-series" class="imsa-series" aria-label="IMSA series" hidden></select>
+  </div>
+
   <main id="content">
     <section class="panel">
       <div class="col">
@@ -32,7 +36,6 @@
             <button class="subtab" data-view="schedule" role="tab" aria-selected="false" type="button">Schedule</button>
             <button class="subtab" data-view="standings" role="tab" aria-selected="false" type="button">Standings</button>
           </div>
-          <select id="imsa-series" class="imsa-series" aria-label="IMSA series" hidden></select>
         </div>
         <div id="scores" class="list" aria-live="polite"></div>
       </div>

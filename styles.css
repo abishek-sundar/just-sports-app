@@ -129,15 +129,33 @@ body {
 
 /* Results / Standings sub-tabs */
 .col-head { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Sits right under the sport tabs (not beside the Results/Standings sub-tabs)
+   so it never gets clipped on narrow screens, and reads as a distinct
+   "pick a series" control rather than another view toggle. */
+.imsa-series-bar { max-width: var(--maxw); margin: 0 auto; padding: 10px 0 0; }
 .imsa-series {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 5px 10px;
+  padding: 7px 32px 7px 14px;
   cursor: pointer;
+  width: 100%;
+  max-width: 260px;
+  display: block;
+  /* Explicit chevron so it reads as a dropdown even where native select
+     styling is minimal (some mobile browsers). */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23938a76' stroke-width='2'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+}
+@media (max-width: 480px) {
+  .imsa-series { max-width: none; }
 }
 .subtabs { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 999px; padding: 3px; }
 .subtab {
