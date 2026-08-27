@@ -690,38 +690,17 @@ const currentImsaSeries = () => IMSA_SERIES.find((s) => s.key === activeImsaSeri
 function imsaUrl(path) {
   return "/imsa-data/" + path.split("/").map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/");
 }
-// Results only change once a whole new event posts (roughly biweekly), so
-// cache every directory listing and JSON file in localStorage for a day —
-// turns the season walk (dozens of requests) into a single instant read on
-// every visit after the first.
-const IMSA_CACHE_TTL = 24 * 60 * 60_000;
-function imsaCacheGet(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return undefined;
-    const { at, data } = JSON.parse(raw);
-    if (Date.now() - at > IMSA_CACHE_TTL) return undefined;
-    return data;
-  } catch { return undefined; }
-}
-function imsaCacheSet(key, data) {
-  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* quota/private-mode: skip */ }
-}
+// Results only change once a whole new event posts (roughly biweekly) — no
+// point re-fetching from the upstream constantly. Caching lives server-side
+// (nginx proxy_cache on /imsa-data/, 24h) rather than per-browser, so every
+// visitor shares one cache instead of each warming up their own.
 async function imsaJson(path) {
-  const key = "imsa-json:" + path;
-  const cached = imsaCacheGet(key);
-  if (cached !== undefined) return cached;
   const text = await (await fetch(imsaUrl(path))).text();
-  const data = JSON.parse(text.replace(/^\uFEFF/, ""));
-  imsaCacheSet(key, data);
-  return data;
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 // The results host serves plain Apache directory listings — parse the <a href>
 // entries, skipping the sort-column links (?C=...) and the parent-dir link.
 async function imsaDir(path) {
-  const key = "imsa-dir:" + path;
-  const cached = imsaCacheGet(key);
-  if (cached !== undefined) return cached;
   const html = await (await fetch(imsaUrl(path))).text();
   const items = [];
   const re = /<a href="([^"?][^"]*)">/g;
@@ -731,13 +710,12 @@ async function imsaDir(path) {
     if (href.startsWith("/")) continue; // parent-directory link
     items.push({ name: href.replace(/\/$/, ""), isDir: href.endsWith("/") });
   }
-  imsaCacheSet(key, items);
   return items;
 }
 // Walk every venue to find which ones this series raced (not every series
 // races every weekend) — in parallel, since each venue's listing is
-// independent. Cached per series for the session on top of the localStorage
-// layer above.
+// independent. Cached per series for the session (in-memory only; the real
+// caching layer is nginx above).
 const _imsaSeasonCache = {};
 async function imsaSeasonEvents(seriesCfg) {
   if (_imsaSeasonCache[seriesCfg.key]) return _imsaSeasonCache[seriesCfg.key];
