@@ -690,13 +690,38 @@ const currentImsaSeries = () => IMSA_SERIES.find((s) => s.key === activeImsaSeri
 function imsaUrl(path) {
   return "/imsa-data/" + path.split("/").map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/");
 }
+// Results only change once a whole new event posts (roughly biweekly), so
+// cache every directory listing and JSON file in localStorage for a day —
+// turns the season walk (dozens of requests) into a single instant read on
+// every visit after the first.
+const IMSA_CACHE_TTL = 24 * 60 * 60_000;
+function imsaCacheGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return undefined;
+    const { at, data } = JSON.parse(raw);
+    if (Date.now() - at > IMSA_CACHE_TTL) return undefined;
+    return data;
+  } catch { return undefined; }
+}
+function imsaCacheSet(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* quota/private-mode: skip */ }
+}
 async function imsaJson(path) {
+  const key = "imsa-json:" + path;
+  const cached = imsaCacheGet(key);
+  if (cached !== undefined) return cached;
   const text = await (await fetch(imsaUrl(path))).text();
-  return JSON.parse(text.replace(/^\uFEFF/, ""));
+  const data = JSON.parse(text.replace(/^\uFEFF/, ""));
+  imsaCacheSet(key, data);
+  return data;
 }
 // The results host serves plain Apache directory listings — parse the <a href>
 // entries, skipping the sort-column links (?C=...) and the parent-dir link.
 async function imsaDir(path) {
+  const key = "imsa-dir:" + path;
+  const cached = imsaCacheGet(key);
+  if (cached !== undefined) return cached;
   const html = await (await fetch(imsaUrl(path))).text();
   const items = [];
   const re = /<a href="([^"?][^"]*)">/g;
@@ -706,11 +731,13 @@ async function imsaDir(path) {
     if (href.startsWith("/")) continue; // parent-directory link
     items.push({ name: href.replace(/\/$/, ""), isDir: href.endsWith("/") });
   }
+  imsaCacheSet(key, items);
   return items;
 }
-// Walk venues newest-first until one has this series (not every series races
-// every weekend). Cached per series for the session — the calendar only
-// grows as new events post, no need to re-walk on every poll.
+// Walk every venue to find which ones this series raced (not every series
+// races every weekend) — in parallel, since each venue's listing is
+// independent. Cached per series for the session on top of the localStorage
+// layer above.
 const _imsaSeasonCache = {};
 async function imsaSeasonEvents(seriesCfg) {
   if (_imsaSeasonCache[seriesCfg.key]) return _imsaSeasonCache[seriesCfg.key];
@@ -719,19 +746,24 @@ async function imsaSeasonEvents(seriesCfg) {
   const season = seasons[0].name;
   const venues = (await imsaDir(`Results/${season}/`)).filter((i) => i.isDir)
     .sort((a, b) => parseInt(b.name) - parseInt(a.name));
-  const events = [];
-  for (const v of venues) {
+  const perVenue = await Promise.all(venues.map(async (v) => {
     const series = await imsaDir(`Results/${season}/${v.name}/`);
     const match = series.find((s) => s.isDir && s.name.toLowerCase().includes(seriesCfg.match));
-    if (match) {
-      events.push({
-        venue: v.name.replace(/^\d+_/, ""),
-        eventPath: `Results/${season}/${v.name}/${match.name}/`,
-      });
-    }
-  }
+    return match ? { venue: v.name.replace(/^\d+_/, ""), eventPath: `Results/${season}/${v.name}/${match.name}/` } : null;
+  }));
+  const events = perVenue.filter(Boolean);
   _imsaSeasonCache[seriesCfg.key] = events;
   return events;
+}
+// A session folder is timestamp-prefixed, e.g. "202608221745_Race 1" — parse
+// that (not the JSON's own session_date, which is in an ambiguous/possibly
+// wrong timezone) for a reliable, honest "when" display.
+function imsaSessionWhen(folderName) {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})_/.exec(folderName);
+  if (!m) return "";
+  const [, y, mo, d, h, mi] = m;
+  const dt = new Date(`${y}-${mo}-${d}T${h}:${mi}:00`);
+  return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} · ${dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 // One event's race session(s) (a double-header has two) — fetched lazily on
 // accordion expand, same pattern as F1's past-race results.
@@ -744,7 +776,7 @@ async function imsaEventRaces(eventPath) {
   for (const r of raceDirs) {
     const files = await imsaDir(eventPath + r.name + "/");
     const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
-    if (resultFile) races.push(await imsaJson(eventPath + r.name + "/" + resultFile.name));
+    if (resultFile) races.push({ folder: r.name, data: await imsaJson(eventPath + r.name + "/" + resultFile.name) });
   }
   return races;
 }
@@ -773,10 +805,16 @@ async function fetchImsaStandings(seriesCfg) {
 }
 function imsaResultRows(container, races) {
   if (!races.length) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
-  races.forEach((data, i) => {
-    const s = data.session || {};
-    if (races.length > 1) container.appendChild(el("div", "f1-head", s.session_name || `Race ${i + 1}`));
-    (data.classification || []).slice(0, 20).forEach((e) => {
+  races.forEach((race, i) => {
+    const s = race.data.session || {};
+    const head = el("div", "f1-head game-row");
+    if (i > 0) head.style.marginTop = "14px";
+    head.append(
+      el("span", null, s.session_name || "Race"),
+      el("span", "f1-session-when", imsaSessionWhen(race.folder))
+    );
+    container.appendChild(head);
+    (race.data.classification || []).slice(0, 20).forEach((e) => {
       const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
       const row = el("div", "f1-row");
       row.appendChild(el("span", "f1-pos", String(e.position)));
