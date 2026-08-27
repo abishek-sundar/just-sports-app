@@ -840,14 +840,22 @@ function imsaSessionsForVenue(sessions, venue) {
 async function imsaSeriesPointsBySession(seriesCfg) {
   const found = await imsaPointsFiles(seriesCfg);
   if (!found || !found.files.length) return null;
-  const byDriver = {};
+  // Keyed by class, not just driver name: a driver can appear in more than
+  // one class file across a season (e.g. a substitute drive elsewhere), and
+  // merging into one flat name->points map let a later file's stale/zeroed
+  // entry silently overwrite the correct one for a shared name.
+  const byClass = {};
   let sessions = [];
   for (const f of found.files) {
+    const m = f.name.match(/^\S+\s+\d+\s+(?:([A-Za-z0-9-]+)\s+)?Drivers\.json$/i);
+    if (!m) continue;
     const data = await imsaJson(found.basePath + f.name);
     if (!sessions.length) sessions = data.championship?.sessions || [];
+    const byDriver = {};
     for (const e of data.classification || []) byDriver[e.key] = e.points_by_session || [];
+    byClass[m[1] || "_default"] = byDriver;
   }
-  return { sessions, byDriver };
+  return { sessions, byClass };
 }
 function imsaResultRows(container, races, pointsCtx, venue) {
   if (!races.length) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
@@ -865,8 +873,9 @@ function imsaResultRows(container, races, pointsCtx, venue) {
     (race.data.classification || []).slice(0, 20).forEach((e) => {
       const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
       const driverKey = (e.drivers || [])[0] ? `${e.drivers[0].firstname} ${e.drivers[0].surname}` : null;
-      const gained = sessionIndex && driverKey && pointsCtx?.byDriver[driverKey]
-        ? pointsCtx.byDriver[driverKey].find((p) => p.session_index === sessionIndex)
+      const classPoints = pointsCtx && (pointsCtx.byClass[e.class] || pointsCtx.byClass._default);
+      const gained = sessionIndex && driverKey && classPoints?.[driverKey]
+        ? classPoints[driverKey].find((p) => p.session_index === sessionIndex)
         : null;
       const row = el("div", "f1-row");
       const mid = el("div");
