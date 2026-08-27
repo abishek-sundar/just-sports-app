@@ -734,7 +734,8 @@ async function fetchImsaResults(seriesCfg) {
   const eventPath = await imsaLatestEventPath(seriesCfg);
   if (!eventPath) return null;
   const items = await imsaDir(eventPath);
-  const raceDirs = items.filter((i) => i.isDir && /^race/i.test(i.name))
+  // Session folders are timestamp-prefixed, e.g. "202608221745_Race 1".
+  const raceDirs = items.filter((i) => i.isDir && /race/i.test(i.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   const races = [];
   for (const r of raceDirs) {
