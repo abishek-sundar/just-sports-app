@@ -688,7 +688,7 @@ let activeImsaSeries = "mx5";
 const currentImsaSeries = () => IMSA_SERIES.find((s) => s.key === activeImsaSeries) || IMSA_SERIES[0];
 
 function imsaUrl(path) {
-  return "/imsa/" + path.split("/").map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/");
+  return "/imsa-data/" + path.split("/").map((seg) => (seg ? encodeURIComponent(seg) : "")).join("/");
 }
 async function imsaJson(path) {
   const text = await (await fetch(imsaUrl(path))).text();
