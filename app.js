@@ -765,9 +765,23 @@ function imsaSessionWhen(folderName) {
   return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} · ${dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 async function imsaFetchRace(eventPath, raceFolder) {
-  const files = await imsaDir(eventPath + raceFolder + "/");
-  const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
-  return resultFile ? imsaJson(eventPath + raceFolder + "/" + resultFile.name) : null;
+  let base = eventPath + raceFolder + "/";
+  let files = await imsaDir(base);
+  let resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
+  if (!resultFile) {
+    // Multi-hour endurance races (e.g. Pilot Challenge's 4-hour rounds) nest
+    // the final classification inside the last "Hour N" subfolder instead of
+    // a flat file directly in the race folder.
+    const hourDirs = files.filter((f) => f.isDir && /^\d+_hour\s*\d+/i.test(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const lastHour = hourDirs[hourDirs.length - 1];
+    if (lastHour) {
+      base += lastHour.name + "/";
+      files = await imsaDir(base);
+      resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
+    }
+  }
+  return resultFile ? imsaJson(base + resultFile.name) : null;
 }
 // Shared points-file discovery: the drivers/entrants files live in the
 // LATEST event's "Points Data" folder, but each one's classification carries
