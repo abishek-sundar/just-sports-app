@@ -830,6 +830,11 @@ function imsaSessionsForVenue(sessions, venue) {
   const vTok = imsaToken(venue), vAcr = imsaAcronym(venue);
   return sessions
     .filter((s) => { const eTok = imsaToken(s.event_name); return eTok && (vTok.includes(eTok) || vAcr === eTok); })
+    // WeatherTech's points file lists a separate Qualifying session per venue
+    // alongside the Race (session_name "Qualifying"/"Race"); MX-5/Pilot
+    // Challenge just use "Round N" for the race itself. Excluding
+    // qualifying/practice keeps this list 1:1 with our races array either way.
+    .filter((s) => !/qualifying|practice/i.test(s.session_name))
     .sort((a, b) => a.session_index - b.session_index);
 }
 async function imsaSeriesPointsBySession(seriesCfg) {
