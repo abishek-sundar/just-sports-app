@@ -709,30 +709,33 @@ async function imsaDir(path) {
   return items;
 }
 // Walk venues newest-first until one has this series (not every series races
-// every weekend), then cache the result — the current event only changes
-// roughly biweekly, no need to re-walk every poll.
-const _imsaEventPathCache = {};
-async function imsaLatestEventPath(seriesCfg) {
-  if (_imsaEventPathCache[seriesCfg.key]) return _imsaEventPathCache[seriesCfg.key];
+// every weekend). Cached per series for the session — the calendar only
+// grows as new events post, no need to re-walk on every poll.
+const _imsaSeasonCache = {};
+async function imsaSeasonEvents(seriesCfg) {
+  if (_imsaSeasonCache[seriesCfg.key]) return _imsaSeasonCache[seriesCfg.key];
   const seasons = (await imsaDir("Results/")).filter((i) => i.isDir).sort((a, b) => b.name.localeCompare(a.name));
-  if (!seasons.length) return null;
+  if (!seasons.length) return [];
   const season = seasons[0].name;
   const venues = (await imsaDir(`Results/${season}/`)).filter((i) => i.isDir)
     .sort((a, b) => parseInt(b.name) - parseInt(a.name));
+  const events = [];
   for (const v of venues) {
     const series = await imsaDir(`Results/${season}/${v.name}/`);
     const match = series.find((s) => s.isDir && s.name.toLowerCase().includes(seriesCfg.match));
     if (match) {
-      const path = `Results/${season}/${v.name}/${match.name}/`;
-      _imsaEventPathCache[seriesCfg.key] = path;
-      return path;
+      events.push({
+        venue: v.name.replace(/^\d+_/, ""),
+        eventPath: `Results/${season}/${v.name}/${match.name}/`,
+      });
     }
   }
-  return null;
+  _imsaSeasonCache[seriesCfg.key] = events;
+  return events;
 }
-async function fetchImsaResults(seriesCfg) {
-  const eventPath = await imsaLatestEventPath(seriesCfg);
-  if (!eventPath) return null;
+// One event's race session(s) (a double-header has two) — fetched lazily on
+// accordion expand, same pattern as F1's past-race results.
+async function imsaEventRaces(eventPath) {
   const items = await imsaDir(eventPath);
   // Session folders are timestamp-prefixed, e.g. "202608221745_Race 1".
   const raceDirs = items.filter((i) => i.isDir && /race/i.test(i.name))
@@ -741,13 +744,13 @@ async function fetchImsaResults(seriesCfg) {
   for (const r of raceDirs) {
     const files = await imsaDir(eventPath + r.name + "/");
     const resultFile = files.find((f) => !f.isDir && /^03_results.*\.json$/i.test(f.name));
-    if (!resultFile) continue;
-    races.push({ session: r.name, data: await imsaJson(eventPath + r.name + "/" + resultFile.name) });
+    if (resultFile) races.push(await imsaJson(eventPath + r.name + "/" + resultFile.name));
   }
-  return { eventPath, races };
+  return races;
 }
 async function fetchImsaStandings(seriesCfg) {
-  const eventPath = await imsaLatestEventPath(seriesCfg);
+  const events = await imsaSeasonEvents(seriesCfg);
+  const eventPath = events[0]?.eventPath;
   if (!eventPath) return null;
   const items = await imsaDir(eventPath);
   const pointsDir = items.find((i) => i.isDir && /points.*data/i.test(i.name));
@@ -768,37 +771,61 @@ async function fetchImsaStandings(seriesCfg) {
   }
   return groups;
 }
-function imsaRaceCard(data) {
-  const s = data.session || {};
-  const card = el("div", "f1-race");
-  const head = el("div", "f1-race-head");
-  const title = el("div", "f1-race-title");
-  title.append(
-    el("span", "f1-race-name", `${s.event_name || ""} — ${s.session_name || ""}`),
-    el("span", "f1-race-sub", s.circuit ? s.circuit.name : "")
-  );
-  head.appendChild(title);
-  card.appendChild(head);
-  const body = el("div", "f1-race-body");
-  (data.classification || []).slice(0, 20).forEach((e) => {
-    const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
-    const row = el("div", "f1-row");
-    row.appendChild(el("span", "f1-pos", String(e.position)));
-    const name = el("span", "f1-driver", driver || `#${e.number}`);
-    row.appendChild(name);
-    row.appendChild(el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`));
-    row.appendChild(el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
-    body.appendChild(row);
+function imsaResultRows(container, races) {
+  if (!races.length) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
+  races.forEach((data, i) => {
+    const s = data.session || {};
+    if (races.length > 1) container.appendChild(el("div", "f1-head", s.session_name || `Race ${i + 1}`));
+    (data.classification || []).slice(0, 20).forEach((e) => {
+      const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
+      const row = el("div", "f1-row");
+      row.appendChild(el("span", "f1-pos", String(e.position)));
+      row.appendChild(el("span", "f1-driver", driver || `#${e.number}`));
+      row.appendChild(el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`));
+      row.appendChild(el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
+      container.appendChild(row);
+    });
   });
-  card.appendChild(body);
-  return card;
 }
-function renderImsaResults(data) {
+// One completed event as a collapsed accordion; results load lazily on expand
+// (mirrors f1RaceAccordionItem — same reasoning: an unwatched race can't spoil).
+function imsaEventAccordionItem(event) {
+  const item = el("div", "f1-race");
+  const btn = el("button", "f1-race-head");
+  btn.type = "button";
+  btn.setAttribute("aria-expanded", "false");
+  const title = el("div", "f1-race-title");
+  title.append(el("span", "f1-race-name", event.venue));
+  btn.append(title, el("span", "f1-race-chevron", "▸"));
+  const body = el("div", "f1-race-body");
+  body.hidden = true;
+
+  btn.addEventListener("click", async () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!open));
+    btn.querySelector(".f1-race-chevron").textContent = open ? "▸" : "▾";
+    body.hidden = open;
+    if (!open && !body.dataset.loaded) {
+      body.appendChild(el("div", "f1-loading", "Loading…"));
+      try {
+        const races = await imsaEventRaces(event.eventPath);
+        body.replaceChildren();
+        imsaResultRows(body, races);
+        body.dataset.loaded = "1";
+      } catch {
+        body.replaceChildren(el("p", "error", "Couldn't load results."));
+      }
+    }
+  });
+
+  item.append(btn, body);
+  return item;
+}
+function renderImsaResults(events) {
   const c = scoresEl();
-  const races = data?.races || [];
-  if (!races.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
+  if (!events || !events.length) { c.replaceChildren(el("p", "empty", "No race results yet this season.")); return; }
   const frag = document.createDocumentFragment();
-  for (const r of races) frag.appendChild(imsaRaceCard(r.data));
+  for (const event of events) frag.appendChild(imsaEventAccordionItem(event));
   c.replaceChildren(frag);
 }
 
@@ -904,7 +931,7 @@ async function refreshScores(sport, { skeleton = false } = {}) {
     // scoring anyway — results only change once a whole new event posts).
     if ((sport.kind === "f1" || sport.kind === "imsa") && cache.results && !skeleton) return;
     const data = sport.kind === "f1" ? await fetchF1Schedule()
-      : sport.kind === "imsa" ? await fetchImsaResults(currentImsaSeries())
+      : sport.kind === "imsa" ? await imsaSeasonEvents(currentImsaSeries())
       : await fetchBallScores(sport);
     if (activeSport !== sport.key) return;
     cache.results = data;
