@@ -727,7 +727,19 @@ async function imsaSeasonEvents(seriesCfg) {
   const perVenue = await Promise.all(venues.map(async (v) => {
     const series = await imsaDir(`Results/${season}/${v.name}/`);
     const match = series.find((s) => s.isDir && s.name.toLowerCase().includes(seriesCfg.match));
-    return match ? { venue: v.name.replace(/^\d+_/, ""), eventPath: `Results/${season}/${v.name}/${match.name}/` } : null;
+    if (!match) return null;
+    const eventPath = `Results/${season}/${v.name}/${match.name}/`;
+    // One extra listing per matched event (not per venue) to date-range the
+    // weekend for the accordion header — cheap, and nginx caches it anyway.
+    const sessionDates = (await imsaDir(eventPath))
+      .filter((i) => i.isDir && /race|practice|qualifying/i.test(i.name))
+      .map((i) => imsaSessionDate(i.name))
+      .filter(Boolean);
+    return {
+      venue: v.name.replace(/^\d+_/, ""),
+      eventPath,
+      dateRange: imsaDateRangeLabel(sessionDates),
+    };
   }));
   const events = perVenue.filter(Boolean);
   _imsaSeasonCache[seriesCfg.key] = events;
@@ -736,12 +748,24 @@ async function imsaSeasonEvents(seriesCfg) {
 // A session folder is timestamp-prefixed, e.g. "202608221745_Race 1" — parse
 // that (not the JSON's own session_date, which is in an ambiguous/possibly
 // wrong timezone) for a reliable, honest "when" display.
-function imsaSessionWhen(folderName) {
+function imsaSessionDate(folderName) {
   const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})_/.exec(folderName);
-  if (!m) return "";
+  if (!m) return null;
   const [, y, mo, d, h, mi] = m;
-  const dt = new Date(`${y}-${mo}-${d}T${h}:${mi}:00`);
+  return new Date(`${y}-${mo}-${d}T${h}:${mi}:00`);
+}
+function imsaSessionWhen(folderName) {
+  const dt = imsaSessionDate(folderName);
+  if (!dt) return "";
   return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} · ${dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+// Whole-weekend date range (practice through race) for the event's accordion header.
+function imsaDateRangeLabel(dates) {
+  if (!dates.length) return "";
+  const sorted = [...dates].sort((a, b) => a - b);
+  const first = sorted[0], last = sorted[sorted.length - 1];
+  const fmt = (d) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return first.toDateString() === last.toDateString() ? fmt(first) : `${fmt(first)}–${fmt(last)}`;
 }
 // One event's race session(s) (a double-header has two) — fetched lazily on
 // accordion expand, same pattern as F1's past-race results.
@@ -758,7 +782,13 @@ async function imsaEventRaces(eventPath) {
   }
   return races;
 }
-async function fetchImsaStandings(seriesCfg) {
+// Shared points-file discovery: the drivers/entrants files live in the
+// LATEST event's "Points Data" folder, but each one's classification carries
+// every driver's *entire* season history (points_by_session), and the
+// "sessions" list is the season's master round schedule — so fetching the
+// latest event's files is enough to cover every past race, not just the
+// most recent one.
+async function imsaPointsFiles(seriesCfg) {
   const events = await imsaSeasonEvents(seriesCfg);
   const eventPath = events[0]?.eventPath;
   if (!eventPath) return null;
@@ -767,13 +797,18 @@ async function fetchImsaStandings(seriesCfg) {
   if (!pointsDir) return null;
   const files = (await imsaDir(eventPath + pointsDir.name + "/"))
     .filter((f) => !f.isDir && /drivers\.json$/i.test(f.name) && !/award/i.test(f.name));
+  return { basePath: eventPath + pointsDir.name + "/", files };
+}
+async function fetchImsaStandings(seriesCfg) {
+  const found = await imsaPointsFiles(seriesCfg);
+  if (!found) return null;
   const groups = [];
-  for (const f of files) {
+  for (const f of found.files) {
     // "IWSC 01 GTP Drivers.json" -> class "GTP"; "MX-5 01 Drivers.json" -> single class.
     // The "01a"-style secondary listings (e.g. GTD-Am splits) are skipped.
     const m = f.name.match(/^\S+\s+\d+\s+(?:([A-Za-z0-9-]+)\s+)?Drivers\.json$/i);
     if (!m) continue;
-    const data = await imsaJson(eventPath + pointsDir.name + "/" + f.name);
+    const data = await imsaJson(found.basePath + f.name);
     const entries = (data.classification || [])
       .sort((a, b) => a.position - b.position)
       .map((e) => ({ name: e.key, points: Math.round(e.total_points) }));
@@ -781,8 +816,37 @@ async function fetchImsaStandings(seriesCfg) {
   }
   return groups;
 }
-function imsaResultRows(container, races) {
+// The race result files have no points field at all — points only exist in
+// the separate points-by-session file, keyed by round number, not by venue
+// name. To show "points gained" per driver in a given race we have to join
+// the two by venue name, which the points file abbreviates ("VIR", "CTMP")
+// against our folder's full venue name ("VIRginia International Raceway").
+// Substring match handles most (Daytona, Mid-Ohio, VIR, St. Petersburg);
+// acronym-of-capitalized-words catches the rest (CTMP). If neither matches
+// confidently, points are simply omitted for that event — never guessed.
+const imsaToken = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const imsaAcronym = (s) => (s || "").split(/[\s-]+/).filter(Boolean).map((w) => w[0]).join("").toLowerCase();
+function imsaSessionsForVenue(sessions, venue) {
+  const vTok = imsaToken(venue), vAcr = imsaAcronym(venue);
+  return sessions
+    .filter((s) => { const eTok = imsaToken(s.event_name); return eTok && (vTok.includes(eTok) || vAcr === eTok); })
+    .sort((a, b) => a.session_index - b.session_index);
+}
+async function imsaSeriesPointsBySession(seriesCfg) {
+  const found = await imsaPointsFiles(seriesCfg);
+  if (!found || !found.files.length) return null;
+  const byDriver = {};
+  let sessions = [];
+  for (const f of found.files) {
+    const data = await imsaJson(found.basePath + f.name);
+    if (!sessions.length) sessions = data.championship?.sessions || [];
+    for (const e of data.classification || []) byDriver[e.key] = e.points_by_session || [];
+  }
+  return { sessions, byDriver };
+}
+function imsaResultRows(container, races, pointsCtx, venue) {
   if (!races.length) { container.appendChild(el("p", "error", "No results posted for this event.")); return; }
+  const candidateSessions = pointsCtx ? imsaSessionsForVenue(pointsCtx.sessions, venue) : [];
   races.forEach((race, i) => {
     const s = race.data.session || {};
     const head = el("div", "f1-head game-row");
@@ -792,13 +856,23 @@ function imsaResultRows(container, races) {
       el("span", "f1-session-when", imsaSessionWhen(race.folder))
     );
     container.appendChild(head);
+    const sessionIndex = candidateSessions[i]?.session_index;
     (race.data.classification || []).slice(0, 20).forEach((e) => {
       const driver = (e.drivers || []).map((d) => `${d.firstname} ${d.surname}`).join(" / ");
+      const driverKey = (e.drivers || [])[0] ? `${e.drivers[0].firstname} ${e.drivers[0].surname}` : null;
+      const gained = sessionIndex && driverKey && pointsCtx?.byDriver[driverKey]
+        ? pointsCtx.byDriver[driverKey].find((p) => p.session_index === sessionIndex)
+        : null;
       const row = el("div", "f1-row");
-      row.appendChild(el("span", "f1-pos", String(e.position)));
-      row.appendChild(el("span", "f1-driver", driver || `#${e.number}`));
-      row.appendChild(el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`));
-      row.appendChild(el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
+      const mid = el("div");
+      mid.append(
+        el("span", "f1-driver", driver || `#${e.number}`),
+        document.createTextNode(" "),
+        el("span", "f1-constructor", `${e.team || ""} · ${e.class || ""}`)
+      );
+      const pts = el("span", "f1-pts", gained ? `+${Math.round(gained.total_points)}` : "");
+      row.append(el("span", "f1-pos", String(e.position)), mid, pts,
+        el("span", "f1-time", e.gap_first === "-" ? "Winner" : e.gap_first || ""));
       container.appendChild(row);
     });
   });
@@ -811,7 +885,10 @@ function imsaEventAccordionItem(event) {
   btn.type = "button";
   btn.setAttribute("aria-expanded", "false");
   const title = el("div", "f1-race-title");
-  title.append(el("span", "f1-race-name", event.venue));
+  title.append(
+    el("span", "f1-race-name", event.venue),
+    el("span", "f1-race-sub", event.dateRange)
+  );
   btn.append(title, el("span", "f1-race-chevron", "▸"));
   const body = el("div", "f1-race-body");
   body.hidden = true;
@@ -824,9 +901,12 @@ function imsaEventAccordionItem(event) {
     if (!open && !body.dataset.loaded) {
       body.appendChild(el("div", "f1-loading", "Loading…"));
       try {
-        const races = await imsaEventRaces(event.eventPath);
+        const [races, pointsCtx] = await Promise.all([
+          imsaEventRaces(event.eventPath),
+          imsaSeriesPointsBySession(currentImsaSeries()).catch(() => null),
+        ]);
         body.replaceChildren();
-        imsaResultRows(body, races);
+        imsaResultRows(body, races, pointsCtx, event.venue);
         body.dataset.loaded = "1";
       } catch {
         body.replaceChildren(el("p", "error", "Couldn't load results."));
